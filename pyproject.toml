@@ -1,0 +1,36 @@
+[project]
+name = "mcp-runtime"
+version = "0.1.0"
+description = "Shared runtime foundation for XDenovo internal MCP services."
+readme = "README.md"
+authors = [
+    { name = "ukeSJTU", email = "uke_sjtu@sjtu.edu.cn" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp[apps]>=3.4.4",
+    "pyjwt>=2.10.1",
+    "temporalio>=1.9.0",
+    "boto3>=1.35.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.30.0",
+    "pydantic-settings>=2.7.0",
+    "structlog>=25.5.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.30,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "prek>=0.4.10",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.22",
+    "ty>=0.0.61",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
