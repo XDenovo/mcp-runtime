@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement"
+  short_description: "Claim an issue, worktree it, and implement test-first"
+  default_prompt: "Use $implement to claim and build issue #42."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Close Issue"
+  short_description: "Merge the ready PR and clean up the worktree/branch"
+  default_prompt: "Use $close-issue to merge this PR and clean up."
