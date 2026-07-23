@@ -10,8 +10,8 @@ Runtime 仓库级选择见 [`techstack.md`](./techstack.md)；本文只覆盖 `m
 自身的模块划分和接口。
 版本策略和发布流程见 [`releasing.md`](./releasing.md)。
 
-本文档描述的是**接口形状**，对应的 `src/mcp_runtime/*.py` 文件是可类型检查的骨架
-（签名 + docstring，函数体为 `raise NotImplementedError`），尚未包含真实实现逻辑。
+本文档定义 v0.1 的目标接口形状。源码和行为测试是实现完成度的证据；发布前尚未完成的
+接口重构和实现工作由 [`TODO.md`](../TODO.md) 跟踪。
 
 ## 1. 定位
 
@@ -31,13 +31,13 @@ Runtime 仓库级选择见 [`techstack.md`](./techstack.md)；本文只覆盖 `m
 | 模块 | 职责 | 明确不做什么 |
 |---|---|---|
 | `config` | 从环境变量加载 `RuntimeConfig`；DB Schema / S3 命名空间 / Temporal Namespace 与 Task Queue 默认从 `service_name` 派生 | 业务配置（价格、并发上限等，属于 Gateway 或待决策） |
-| `auth` | 校验 Gateway 签发的内部 JWT（JWKS、audience、issuer、exp），暴露 `Principal` 给 Tool Handler | 业务级授权（"这个 Job 是否属于当前用户"由各服务自行校验） |
+| `auth` | 将 FastMCP 已验签的 `AccessToken` 约束为平台 Internal JWT 契约，并暴露稳定的 `Principal` | 自行解析或验签 JWT；业务级授权（"这个 Job 是否属于当前用户"由各服务自行校验） |
 | `server` | 组装预置了 auth 中间件、健康检查、结构化日志的 FastMCP app 工厂 | 定义任何具体 Tool |
 | `workflow` | 绑定到本服务 Namespace/Task Queue 的 Temporal Client，提供幂等 `start`；供 Worker 进程使用的 `build_worker` | 定义具体 Workflow/Activity |
 | `jobs` | `JobStatus` 枚举、`JobMixin`/`ArtifactMixin` SQLAlchemy Mixin、幂等 Job Id 生成、Engine 构造 | 通用 Repository/查询层；Job/Artifact 的领域字段 |
 | `storage` | 限定到本服务命名空间的 S3 客户端 `ArtifactStore`，所有 key 自动加命名空间前缀 | 服务内部如何组织 Artifact 路径 |
 | `observability` | 初始化结构化日志与遥测；绑定请求、Principal、Job 和 Activity 上下文；关联 Log 与 Trace | 选择 Collector、Telemetry Backend、保留策略或告警产品 |
-| `testing` | `fake_principal()`、`InMemoryVerifier` 等测试替身，供各服务自己的 pytest 套件复用 | — |
+| `testing` | `fake_principal()` 和基于 FastMCP `StaticTokenVerifier` 的 test server，供各服务自己的 pytest 套件复用 | 将测试 Token Verifier 放入生产默认路径 |
 
 ### 2.1 隔离性设计原则
 
@@ -101,31 +101,19 @@ class Principal:
     def has_scope(self, scope: str) -> bool: ...
 
 
-class TokenVerificationError(Exception): ...
-
-
-class InternalTokenVerifier:
-    def __init__(
-        self,
-        jwks_url: str,
-        audience: str,
-        issuer: str,
-        *,
-        leeway_seconds: int = 30,
-    ) -> None: ...
-
-    def verify(self, token: str) -> Principal: ...
-
-
-def install_auth(app: FastMCP, verifier: InternalTokenVerifier) -> None: ...
+class PrincipalUnavailableError(RuntimeError): ...
 def current_principal() -> Principal: ...
 ```
 
-`InternalTokenVerifier` 对 Gateway 内部令牌契约提供稳定封装。`verify` 校验失败时抛出
-`TokenVerificationError`，由 `server` 模块统一映射为标准 MCP 鉴权错误，避免每个服务
-各自处理底层认证库异常。`current_principal()` 读取 FastMCP 当前请求绑定的访问令牌并
-转换为 Runtime `Principal`，供 Tool Handler 使用。Verifier 与 FastMCP 的具体组合方式
-由 [`techstack.md`](./techstack.md) 定义。
+`create_server()` 直接把 FastMCP `JWTVerifier` 配置为 Auth Provider。私有的 Runtime
+Claim Policy 在 FastMCP 验签后、Tool Handler 执行前验证必需字段、字段类型、5 分钟
+最大生命周期和可选 `nbf`，再把 FastMCP 请求上下文映射为 `Principal`。Runtime 不公开
+第二套 Token Verifier API，也不维护平行的认证 ContextVar。
+
+`current_principal()` 只在通过认证和 Claim Policy 的请求中返回 `Principal`；在 handler
+外或没有已认证请求上下文时抛出 `PrincipalUnavailableError`。签名失败、错误
+issuer/audience、过期或不符合 Claim Policy 的令牌由 FastMCP 认证路径统一拒绝，不把
+底层 JWT 库异常暴露给服务。
 
 ### 3.3 `mcp_runtime.server`
 
@@ -138,16 +126,16 @@ class ServerRuntime:
 
 def create_server(
     config: RuntimeConfig,
-    *,
-    verifier: InternalTokenVerifier | None = None,
 ) -> ServerRuntime: ...
 
 def run_server(runtime: ServerRuntime) -> None: ...
 ```
 
-`create_server` 返回的 `app` 已经挂好 auth 中间件、健康检查端点和结构化请求日志；
-服务在拿到 `ServerRuntime` 之后只需要用 `@runtime.app.tool()` 注册自己的 Tool，
-再调用 `run_server(runtime)` 作为 `__main__.py` 的入口。
+`create_server` 创建由 lifespan 管理的共享 `httpx.AsyncClient`，用它构造 FastMCP
+`JWTVerifier`，并返回已挂好认证、Claim Policy、健康检查和结构化请求日志的 `app`。
+lifespan 关闭时必须关闭共享 Client。服务在拿到 `ServerRuntime` 之后只需要用
+`@runtime.app.tool()` 注册自己的 Tool，再调用 `run_server(runtime)` 作为
+`__main__.py` 的入口。
 
 ### 3.4 `mcp_runtime.workflow`
 
@@ -286,9 +274,16 @@ OpenTelemetry 行为仍需由源码和行为测试证明，不能根据本文的
 ```python
 def fake_principal(**overrides: Any) -> Principal: ...
 
-class InMemoryVerifier(InternalTokenVerifier):
-    """接受任意 token，返回 fake_principal()，供服务自己的测试套件使用。"""
+def create_test_server(
+    config: RuntimeConfig,
+    *,
+    tokens: Mapping[str, Principal],
+) -> ServerRuntime: ...
 ```
+
+`create_test_server()` 使用 FastMCP `StaticTokenVerifier` 将显式测试 Token 映射到
+`Principal`，并复用生产 Server 的 Tool 注册、Claim Policy、日志和生命周期装配。
+该函数只从 `mcp_runtime.testing` 导入，不通过生产包顶层重新导出。
 
 ## 4. Non-goals
 
