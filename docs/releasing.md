@@ -22,7 +22,7 @@
 版本已经可以发布。
 
 如果本次发布包含公开 API 的破坏性变更，确认
-[`design.md`](./design.md)、行为测试、Release Notes 和消费方迁移说明已经同步更新。
+对应 API 设计文档、行为测试、Release Notes 和消费方迁移说明已经同步更新。
 
 ### 找到 Release PR
 
@@ -62,7 +62,6 @@ Release PR 或手工创建 tag 完成。
 
 - `.release-please-manifest.json`；
 - `pyproject.toml`；
-- `src/mcp_runtime/__init__.py` 中的 `mcp_runtime.__version__`；
 - `CHANGELOG.md` 中的新版本条目。
 
 检查 `CHANGELOG.md` 和 PR 描述是否准确概括用户可见变更。破坏性变更必须包含
@@ -91,8 +90,8 @@ Release PR 不会自动合并；合并动作是维护者作出的显式发布决
 - tag 名为预期的 `vX.Y.Z`，并指向合并后的 Release PR commit；
 - GitHub Release 已发布，Release Notes 与已批准的变更内容一致；
 - Release 同时包含 wheel 和 sdist；
-- tag 中的 `.release-please-manifest.json`、`pyproject.toml`、
-  `mcp_runtime.__version__` 和 `CHANGELOG.md` 版本一致；
+- tag 中的 `.release-please-manifest.json`、`pyproject.toml` 和 `CHANGELOG.md`
+  版本一致；
 - 当前版本发布清单要求的干净环境安装和 smoke test 已通过。
 
 对于 `v0.1.0`，还必须完成 [`TODO.md`](../TODO.md) 中从最终 tag 安装并执行 smoke

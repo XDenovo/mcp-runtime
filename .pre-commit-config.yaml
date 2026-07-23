@@ -27,7 +27,7 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: uv run pytest
+        entry: sh -c 'test ! -d tests || uv run pytest'
         language: system
         types: [python]
         pass_filenames: false

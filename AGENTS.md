@@ -14,8 +14,9 @@
   [Platform architecture](https://github.com/XDenovo/platform/blob/main/docs/architecture.md) and
   [approved technology stack](https://github.com/XDenovo/platform/blob/main/docs/techstack.md) as
   supplemental platform-wide context.
-- `docs/design.md` owns this library's module boundaries and public API design.
-  `docs/releasing.md` owns versioning and release operations.
+- Public module boundaries and APIs must be designed before implementation; placeholder source,
+  import success, and typed skeletons are not interface contracts. `docs/releasing.md` owns
+  versioning and release operations.
 
 ## Architecture and Security Guardrails
 
@@ -42,13 +43,12 @@
 
 - Python 3.13, pinned by `.python-version` and the project metadata.
 - uv for dependency resolution and environment management; `uv_build` as the build backend.
-- Ruff for linting and formatting, ty for type checking, and pytest with automatic asyncio mode.
+- Ruff for linting and formatting, ty for type checking, pytest with automatic asyncio mode, and
+  pytest-cov with branch coverage.
 - `pyproject.toml` and `uv.lock` own exact dependency and environment state.
 - `src/mcp_runtime/__init__.py` owns the production public export surface.
-- `tests/` contains unit and contract tests; `docs/design.md` defines intended interface behavior.
-
-Some documented interfaces are contracts represented by typed skeletons. Confirm behavior in the
-source and behavior tests rather than treating a signature or import test as an implementation.
+- `tests/` contains behavior and contract tests once implemented; do not add placeholder tests only
+  to make an empty suite pass.
 
 ## Setup and Dependency Management
 
@@ -89,7 +89,7 @@ uv run prek run --all-files --stage pre-push
 
 - `pre-commit` stage: `ruff check --fix`, `ruff format`, `ty check`. A hook that modifies files
   aborts the commit once; re-stage and commit again.
-- `pre-push` stage: `pytest`.
+- `pre-push` stage: `pytest` when a `tests/` directory exists.
 
 ## Development Workflow
 
@@ -101,8 +101,8 @@ uv run --no-sync <command>
 ```
 
 - Keep public interfaces typed and documented.
-- Update `mcp_runtime.__all__`, `docs/design.md`, and contract or behavior tests together when the
-  public API changes.
+- Do not add a public export until its design, behavior, failure paths, and compatibility impact
+  are documented and tested together.
 - Preserve `from __future__ import annotations` and the existing modern type syntax.
 - Keep service isolation structural: constructors and methods should derive service-owned
   resources from `RuntimeConfig` rather than accept arbitrary cross-service identifiers.
@@ -123,14 +123,19 @@ uv sync --locked
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 uv run --no-sync ty check
-uv run --no-sync pytest
 uv build
+```
+
+Once behavior tests exist, also run:
+
+```bash
+uv run --no-sync pytest
 ```
 
 Focused checks:
 
 ```bash
-uv run --no-sync pytest tests/test_observability.py
+uv run --no-sync pytest tests/test_<module>.py
 uv run --no-sync pytest -k "<expression>"
 uv run --no-sync ruff check <changed-path>
 uv run --no-sync ruff format --check <changed-path>
@@ -138,6 +143,8 @@ uv run --no-sync ruff format --check <changed-path>
 
 - Test files use `tests/test_*.py`; pytest runs async tests with `asyncio_mode = "auto"`.
 - Prefer behavior assertions over import-only checks.
+- Coverage measures `mcp_runtime` statements and branches. Focused tests do not enforce a global
+  threshold; the complete CI suite will own the release gate once real behavior tests exist.
 - Cover invalid configuration, identity and scope failures, service-boundary violations,
   idempotency, retries, cancellation, concurrent context isolation, and resource cleanup when the
   affected module is implemented.
@@ -161,9 +168,6 @@ and required threshold.
 - XDeNovo organization policy prevents the default `GITHUB_TOKEN` from creating release PRs.
   Preserve the narrowly scoped GitHub App token flow described in `docs/releasing.md`.
 - Keep third-party GitHub Actions pinned to full commit SHAs.
-
-TODO: After package versioning has one source of truth, update the release instructions and remove
-manual synchronization risk between `pyproject.toml` and `mcp_runtime.__version__`.
 
 TODO: When clean-wheel installation, `py.typed`, and external-consumer type checks enter CI,
 document their exact validation commands here.

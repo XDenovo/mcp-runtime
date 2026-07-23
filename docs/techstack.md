@@ -3,7 +3,8 @@
 本文是 `mcp-runtime` 已批准的仓库级技术选择及其边界的参考。未确定的方案、实施进度和
 临时计划不进入本文；平台级选择和跨仓库兼容基线由
 [`XDenovo/platform` 技术栈](https://github.com/XDenovo/platform/blob/main/docs/techstack.md)
-负责，模块职责和公开 API 由 [`design.md`](./design.md) 负责。
+负责。模块职责和公开 API 必须在实现前形成独立设计；不以占位源码、导入成功或类型
+骨架作为已经批准的接口契约。
 
 直接依赖范围、实际解析版本和已实现行为分别以 `pyproject.toml`、`uv.lock`、源码和
 行为测试为准。
@@ -23,11 +24,34 @@
 | Artifact Client | `boto3` 同步 Core、Presigned URL、有界异步线程卸载 |
 | Telemetry | OpenTelemetry、W3C Trace Context、OTLP |
 | Structured Logging | `structlog`、stdout JSON |
-| Quality | Ruff、ty、pytest、pytest-asyncio、prek |
+| Quality | Ruff、ty、pytest、pytest-asyncio、pytest-cov、Coverage.py、prek |
 
 Python 3.13 是 Runtime、生成模板和容器镜像的共同基线。精确支持范围由项目 Manifest
 声明；扩展到新的 Python Minor 前必须独立验证 Runtime、SDK、原生扩展、生成模板和
 容器镜像。
+
+## 工程质量与包基线
+
+Runtime 使用 `uv_build` 的标准 `src` layout。生产包必须包含 `py.typed`，以声明内联
+类型可供消费方类型检查器使用。公开 API 只在设计和行为完成后从
+`mcp_runtime.__init__` 导出；空壳函数、`NotImplementedError` 和仅为导入成功而存在的
+符号不构成可发布能力。
+
+Ruff 同时负责 lint 和 format，目标语言版本与项目的 Python 3.13 基线一致。ty 检查
+`src` 和 `tests`，第三方类型解析使用 uv 管理的项目环境，不维护第二套类型检查环境
+或依赖声明。
+
+pytest 使用原生 TOML 严格配置；pytest-asyncio 使用自动模式，并让异步 Fixture 和
+Test 默认获得 function 级事件循环隔离。测试必须验证真实行为、失败路径和资源清理，
+不编写只用于证明配置文件存在或包能够导入的占位测试。
+
+pytest-cov 集成 Coverage.py，并以 `mcp_runtime` 为唯一生产源码范围：
+
+- 同时采集语句和分支覆盖率，并使用相对路径保存结果，保证本地与 CI 报告可比较；
+- 终端报告显示缺失行，CI 可输出 `coverage.xml`，本地按需生成 `htmlcov`；
+- 普通和聚焦 pytest 调用不在全局 `addopts` 中强制 coverage，完整 CI 测试显式启用；
+- 覆盖率阈值属于 CI 和发布质量策略，在真实行为测试形成后设置并逐步提高；
+- 覆盖率数字不能替代身份验证、服务隔离、幂等、取消、并发和资源清理的行为断言。
 
 ## MCP Server、配置与内部身份
 
