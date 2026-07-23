@@ -2,8 +2,11 @@
 
 本文定义 `mcp-runtime` 的职责边界和公开 API。`mcp-runtime` 是
 `pepmimic-mcp`、`graphpep-mcp`、`bindcraft-mcp` 三个计算服务共享的运行时基础库，
-不是可独立运行的服务。系统级架构见 [`architecture.md`](../../docs/architecture.md)，
-技术选型见 [`techstack.md`](../../docs/techstack.md)；本文只覆盖 `mcp-runtime` 自身的模块划分和接口。
+不是可独立运行的服务。系统级架构见
+[`architecture.md`](https://github.com/XDenovo/platform/blob/main/docs/architecture.md)，
+技术选型见
+[`techstack.md`](https://github.com/XDenovo/platform/blob/main/docs/techstack.md)；本文只覆盖
+`mcp-runtime` 自身的模块划分和接口。
 版本策略和发布流程见 [`releasing.md`](./releasing.md)。
 
 本文档描述的是**接口形状**，对应的 `src/mcp_runtime/*.py` 文件是可类型检查的骨架
@@ -11,7 +14,7 @@
 
 ## 1. 定位
 
-`architecture.md` §4.3 规定三个计算服务共享同一组平台边界：
+`architecture.md` §4.4 规定三个计算服务共享同一组平台边界：
 
 - 只在私网提供服务，验证 Gateway 签发的内部凭证并从中取得身份和权限；
 - 拥有本服务的 Job、JobStep、Artifact 元数据；
@@ -41,7 +44,7 @@
 `workflow.WorkflowClient`、`storage.ArtifactStore`、`jobs.create_engine_*` 都从
 `RuntimeConfig` 构造，且不接受能够指向"别的服务"的参数（例如
 `WorkflowClient.start` 的 `task_queue` 默认且只能是本服务队列）。这是用代码结构强制
-`architecture.md` §4.3 的隔离要求，而不是仅仅依赖约定或 code review。
+`architecture.md` §4.4 的隔离要求，而不是仅仅依赖约定或 code review。
 
 ## 3. 公开 API
 
@@ -251,7 +254,7 @@ class ArtifactStore:
 
 所有方法接受的 `key` 都是命名空间内的相对路径，实现内部会拼接
 `f"{namespace}/{key}"`；没有任何方法接受绝对路径或跨命名空间路径，
-对应 `architecture.md` §4.6 对象存储部分"只有路径前缀而没有访问策略不构成安全
+对应 `architecture.md` §4.7 对象存储部分"只有路径前缀而没有访问策略不构成安全
 隔离"的要求——这里额外在客户端代码层面也做一次限制。
 
 ### 3.7 `mcp_runtime.observability`
