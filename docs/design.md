@@ -4,9 +4,10 @@
 `pepmimic-mcp`、`graphpep-mcp`、`bindcraft-mcp` 三个计算服务共享的运行时基础库，
 不是可独立运行的服务。系统级架构见
 [`architecture.md`](https://github.com/XDenovo/platform/blob/main/docs/architecture.md)，
-技术选型见
-[`techstack.md`](https://github.com/XDenovo/platform/blob/main/docs/techstack.md)；本文只覆盖
-`mcp-runtime` 自身的模块划分和接口。
+平台级技术选择见
+[`XDenovo/platform` 技术栈](https://github.com/XDenovo/platform/blob/main/docs/techstack.md)，
+Runtime 仓库级选择见 [`techstack.md`](./techstack.md)；本文只覆盖 `mcp-runtime`
+自身的模块划分和接口。
 版本策略和发布流程见 [`releasing.md`](./releasing.md)。
 
 本文档描述的是**接口形状**，对应的 `src/mcp_runtime/*.py` 文件是可类型检查的骨架
@@ -22,8 +23,8 @@
 - 不访问其他计算服务的数据库 Schema、Artifact 命名空间或 Workflow Namespace。
 
 这些边界与三个服务具体做什么科学计算无关，是纯粹的平台层问题，因此适合下沉到
-`mcp-runtime`。`techstack.md` §5.2 同时明确：第三方科学计算依赖、服务特定的业务逻辑
-不应该进入 `mcp-runtime`，除非它们确实是所有服务共享的运行时能力。
+`mcp-runtime`。第三方科学计算依赖和服务特定的业务逻辑不进入共享 Runtime；具体技术
+和依赖边界由 [`techstack.md`](./techstack.md) 负责。
 
 ## 2. 模块与职责
 
@@ -35,7 +36,7 @@
 | `workflow` | 绑定到本服务 Namespace/Task Queue 的 Temporal Client，提供幂等 `start`；供 Worker 进程使用的 `build_worker` | 定义具体 Workflow/Activity |
 | `jobs` | `JobStatus` 枚举、`JobMixin`/`ArtifactMixin` SQLAlchemy Mixin、幂等 Job Id 生成、Engine 构造 | 通用 Repository/查询层；Job/Artifact 的领域字段 |
 | `storage` | 限定到本服务命名空间的 S3 客户端 `ArtifactStore`，所有 key 自动加命名空间前缀 | 服务内部如何组织 Artifact 路径 |
-| `observability` | 结构化日志（stdout JSON）、请求与 Job 的关联 id | Metrics/Tracing 供应商选型（`techstack.md` 标记为待定，仅预留扩展点） |
+| `observability` | 初始化结构化日志与遥测；绑定请求、Principal、Job 和 Activity 上下文；关联 Log 与 Trace | 选择 Collector、Telemetry Backend、保留策略或告警产品 |
 | `testing` | `fake_principal()`、`InMemoryVerifier` 等测试替身，供各服务自己的 pytest 套件复用 | — |
 
 ### 2.1 隔离性设计原则
@@ -120,10 +121,11 @@ def install_auth(app: FastMCP, verifier: InternalTokenVerifier) -> None: ...
 def current_principal() -> Principal: ...
 ```
 
-`InternalTokenVerifier` 内部包装 `PyJWKClient`（带缓存和刷新）。`verify` 校验失败时
-抛出 `TokenVerificationError`，由 `server` 模块统一映射为标准 MCP 鉴权错误，避免每个
-服务各自处理裸的 JWT 异常。`current_principal()` 通过 contextvar 读取当前请求绑定的
-身份，供 Tool Handler 内部访问。
+`InternalTokenVerifier` 对 Gateway 内部令牌契约提供稳定封装。`verify` 校验失败时抛出
+`TokenVerificationError`，由 `server` 模块统一映射为标准 MCP 鉴权错误，避免每个服务
+各自处理底层认证库异常。`current_principal()` 读取 FastMCP 当前请求绑定的访问令牌并
+转换为 Runtime `Principal`，供 Tool Handler 使用。Verifier 与 FastMCP 的具体组合方式
+由 [`techstack.md`](./techstack.md) 定义。
 
 ### 3.3 `mcp_runtime.server`
 
@@ -259,18 +261,6 @@ class ArtifactStore:
 
 ### 3.7 `mcp_runtime.observability`
 
-选型：`structlog`，而不是裸 stdlib `logging`。理由是 `bind_context` 想要的语义——
-"在这个作用域内，之后所有日志行都自动带上这几个字段"——正是 `structlog.contextvars`
-内置提供的能力（`merge_contextvars` 处理器 + `bound_contextvars` 上下文管理器），
-自己在 stdlib `logging` 上重新实现等于重复造轮子。代价是要把 `fastmcp`、
-`sqlalchemy`、`temporalio`、`boto3` 这些走 stdlib `logging` 的三方库也接进同一条
-JSON 输出链路，做法是 structlog 官方推荐的 `ProcessorFormatter` 集成：structlog
-自身的处理器链和 stdlib root logger 的 `foreign_pre_chain` 共用同一组
-"公共处理器"（`merge_contextvars`、`add_logger_name`、`add_log_level`、
-`TimeStamper`、`StackInfoRenderer`、`format_exc_info`），最终都渲染成
-`JSONRenderer()` 输出，保证容器 stdout 是一条格式一致的流
-（对应 `architecture.md` §7.1 "容器标准输出和 journald"）。
-
 ```python
 def configure_logging(config: RuntimeConfig) -> None: ...
 def get_logger(name: str) -> structlog.stdlib.BoundLogger: ...
@@ -279,11 +269,17 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger: ...
 def bind_context(**kv: Any) -> Iterator[None]: ...
 ```
 
-与其他模块不同：`observability` 不依赖任何外部基础设施（不需要真的 Postgres、
-Temporal、MinIO 或 Gateway），所以 `mcp-runtime/src/mcp_runtime/observability.py`
-在这一版里是**真实实现**，不是骨架签名；`get_logger`/`bind_context` 是对
-`structlog.get_logger`/`structlog.contextvars.bound_contextvars` 的薄封装，
-`configure_logging` 按上面的 `ProcessorFormatter` 方案接管 stdlib root logger。
+`configure_logging()` 初始化进程唯一的 stdout JSON 日志管线，并将 stdlib
+`logging` 记录接入相同格式。`bind_context()` 在作用域内绑定请求、Principal、Job、
+Activity、`trace_id` 和 `span_id` 等关联字段，退出作用域时必须恢复原上下文，避免并发
+请求之间串号。
+
+Runtime 的遥测初始化负责建立 OpenTelemetry Resource、Tracer/Meter Provider、
+Instrumentation 和 Exporter；没有配置 Exporter 时保持 no-op。Collector 与 Backend
+不属于该模块。具体库、信号范围和安全约束见 [`techstack.md`](./techstack.md)。
+
+当前 `configure_logging()`、`get_logger()` 和 `bind_context()` 已有真实实现；新增
+OpenTelemetry 行为仍需由源码和行为测试证明，不能根据本文的接口说明推断已经完成。
 
 ### 3.8 `mcp_runtime.testing`
 
@@ -305,12 +301,7 @@ class InMemoryVerifier(InternalTokenVerifier):
 - 定价、配额、准入策略（属于 Gateway 或平台级待决策事项，见 `architecture.md` §9.1）；
 - Alembic 迁移文件内容（每个服务管理自己的 Schema 迁移，`mcp-runtime` 只提供
   Engine 构造）；
-- Metrics/Tracing 具体供应商选型（`techstack.md` §9 标记为待定，`observability`
-  模块只预留扩展点）。
-
-## 5. 依赖
-
-对应 `techstack.md` §5.1 "已采用的共享基础"，`mcp-runtime` 依赖：`fastmcp[apps]`、
-`pyjwt`（含 `PyJWKClient`）、`temporalio`、`boto3`、`sqlalchemy[asyncio]`、
-`asyncpg`、`pydantic-settings`、`structlog`。具体版本以 `pyproject.toml`/`uv.lock`
-为准；`techstack.md` 只记录跨项目协作需要的选型和状态，不重复本文档已有的模块级细节。
+- OpenTelemetry Collector、Telemetry Backend、集中式日志、保留策略、Dashboard 和
+  告警产品；
+- 通过 MCP 请求代理大文件上传或下载；Artifact 字节由 Client 通过 Presigned URL
+  直接传输，或由 Worker 持久化。
