@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "aws-sdk-python-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-python-usage/SKILL.md",
+      "computedHash": "cdd24e3232b66ff9c25859cd4c540d65fab74e0ddf7d5fd1b39576692463038f"
+    },
+    "sqlalchemy": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "github",
+      "skillPath": "toolchains/python/data/sqlalchemy/SKILL.md",
+      "computedHash": "f1fe469a7177198fed4bdbba9ffd23110bf9c548afab39f99951da5756fbf272"
+    },
+    "temporal-developer": {
+      "source": "temporalio/skill-temporal-developer",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "6445528e3045e32bf39e0e3b7581cf7fe05b04bb871d3feee52b3fc4faf33c57"
+    }
+  }
+}
