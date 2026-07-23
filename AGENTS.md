@@ -69,8 +69,27 @@ uv lock
 
 Do not add a parallel pip, requirements-file, Poetry, or Conda dependency workflow.
 
-TODO: When the prek configuration is committed, document hook installation, manual execution,
-and the checks enforced at commit and push time.
+### Pre-commit and Pre-push Hooks
+
+`.pre-commit-config.yaml` defines local hooks run through `prek`, using the locked project
+toolchain (plain `uv run`, so each invocation re-checks lock consistency before running).
+
+Install once per clone:
+
+```bash
+uv run prek install --hook-type pre-commit --hook-type pre-push
+```
+
+Run manually without committing or pushing:
+
+```bash
+uv run prek run --all-files
+uv run prek run --all-files --stage pre-push
+```
+
+- `pre-commit` stage: `ruff check --fix`, `ruff format`, `ty check`. A hook that modifies files
+  aborts the commit once; re-stage and commit again.
+- `pre-push` stage: `pytest`.
 
 ## Development Workflow
 
