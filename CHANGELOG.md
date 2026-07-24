@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/XDenovo/mcp-runtime/compare/v0.1.0...v0.2.0) (2026-07-24)
+
+
+### Features
+
+* **testing:** publish internal auth contract harness ([#10](https://github.com/XDenovo/mcp-runtime/issues/10)) ([df2183c](https://github.com/XDenovo/mcp-runtime/commit/df2183cc75daf0af0a98f299afda91f86281b8d5)), closes [#9](https://github.com/XDenovo/mcp-runtime/issues/9)
+
 ## 0.1.0 (2026-07-24)
 
 
