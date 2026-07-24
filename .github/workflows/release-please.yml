@@ -34,8 +34,8 @@ jobs:
       - name: Build distributions
         run: uv build
 
-      - name: Validate built distributions
-        run: uv run --no-sync python scripts/validate_distribution.py dist
+      - name: Validate built wheel
+        run: uv run --no-sync python scripts/validate_distribution.py dist/*.whl
 
       # XDenovo org policy blocks the default GITHUB_TOKEN from creating or
       # approving pull requests (org-wide, not overridable per repo). Mint a

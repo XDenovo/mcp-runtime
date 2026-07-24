@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastmcp.server.auth import AccessToken
-from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from starlette.requests import Request
 
 from mcp_runtime import get_principal
@@ -40,7 +41,7 @@ def test_get_principal_rejects_authenticated_token_without_subject(
         {
             "type": "http",
             "headers": [],
-            "user": AuthenticatedUser(access_token),
+            "user": SimpleNamespace(access_token=access_token),
         }
     )
     monkeypatch.setattr(principal_module, "get_http_request", lambda: request)

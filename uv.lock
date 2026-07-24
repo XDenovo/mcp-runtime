@@ -805,7 +805,9 @@ name = "mcp-runtime"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "boto3" },
+    { name = "cryptography" },
     { name = "fastmcp", extra = ["apps"] },
     { name = "httpx" },
     { name = "opentelemetry-api" },
@@ -816,6 +818,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "psycopg" },
     { name = "pydantic-settings" },
+    { name = "pyjwt" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
     { name = "temporalio", extra = ["opentelemetry"] },
@@ -823,10 +826,8 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "cryptography" },
     { name = "prek" },
     { name = "psycopg", extra = ["binary"] },
-    { name = "pyjwt" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -836,7 +837,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.14.2,<5" },
     { name = "boto3", specifier = ">=1.43.53,<2" },
+    { name = "cryptography", specifier = ">=49.0.0,<50" },
     { name = "fastmcp", extras = ["apps"], specifier = ">=3.4.4,<4" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "opentelemetry-api", specifier = ">=1.44.0,<2" },
@@ -847,6 +850,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.44.0,<2" },
     { name = "psycopg", specifier = ">=3.3.4,<4" },
     { name = "pydantic-settings", specifier = ">=2.14.2,<3" },
+    { name = "pyjwt", specifier = ">=2.13.0,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.51,<3" },
     { name = "structlog", specifier = ">=26.1.0,<27" },
     { name = "temporalio", extras = ["opentelemetry"], specifier = ">=1.30.0,<2" },
@@ -854,10 +858,8 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "cryptography", specifier = ">=49.0.0,<50" },
     { name = "prek", specifier = ">=0.4.10" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4,<4" },
-    { name = "pyjwt", specifier = ">=2.13.0,<3" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8" },

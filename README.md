@@ -1,8 +1,9 @@
 # XDeNovo MCP Runtime
 
 `mcp-runtime` 是 XDeNovo Compute MCP Service 共用的 Python 运行时库，不是独立部署的
-服务。首个可用切片提供经过验证的配置、Gateway 内部 JWT 鉴权、请求级 `Principal`，
-以及具有固定安全策略的 FastMCP stateful Streamable HTTP Server。
+服务。当前提供经过验证的配置、Gateway 内部 JWT 鉴权、请求级 `Principal`，
+具有固定安全策略的 FastMCP stateful Streamable HTTP Server，以及下游服务可复用的
+内部鉴权契约测试工具。
 
 详细的凭证契约、失败语义和测试设计见
 [`docs/authentication.md`](docs/authentication.md)。平台边界以
@@ -27,6 +28,78 @@ from mcp_runtime import (
 
 `Principal` 只含不可变的 `subject` 和 `scopes`。服务仍须根据它执行业务授权、资源归属
 检查；Runtime 鉴权本身不代表调用者有权访问任意业务对象。
+
+测试工具位于独立子模块，不会扩大顶层 `mcp_runtime` 的导出：
+
+```python
+from mcp_runtime.testing import (
+    InternalCredentialFactory,
+    assert_authentication_rejected,
+    streamable_http_client,
+)
+```
+
+## 下游鉴权契约测试
+
+`InternalCredentialFactory` 为一组测试生成独立的临时 RSA key、内存 JWKS transport 和
+符合 Platform 契约的 300 秒 RS256 Credential。它只允许调用方提供非空 subject、
+业务 scope，以及用于 audience 隔离测试的目标 `service_id`；不能构造任意 Header、
+Claim 或算法，也不公开私钥。
+
+```python
+from mcp_runtime import RuntimeSettings, create_server
+from mcp_runtime.testing import (
+    InternalCredentialFactory,
+    assert_authentication_rejected,
+    streamable_http_client,
+)
+
+settings = RuntimeSettings()
+credentials = InternalCredentialFactory(settings)
+server = create_server(
+    settings,
+    jwks_transport=credentials.jwks_transport,
+)
+
+
+@server.tool
+async def contract_probe() -> str:
+    return "ok"
+
+
+async def test_authenticated_service_contract() -> None:
+    credential = credentials.issue(
+        subject="user_01J2ABCDEF",
+        scopes=("example:read",),
+    )
+    async with streamable_http_client(
+        server,
+        credential=credential,
+    ) as client:
+        tools = await client.list_tools()
+        assert [tool.name for tool in tools] == ["contract_probe"]
+
+    await assert_authentication_rejected(streamable_http_client(server))
+    await assert_authentication_rejected(
+        streamable_http_client(
+            server,
+            credential=credentials.issue(
+                subject="user_01J2ABCDEF",
+                target_service_id="other-mcp",
+            ),
+        )
+    )
+```
+
+这个 Client 经由进程内 ASGI 应用穿过真实 Bearer middleware 和 stateful Streamable
+HTTP Session，不使用会绕过 HTTP 鉴权的 FastMCP in-memory Server transport。
+`assert_authentication_rejected()` 不依赖 pytest，并把 SDK/AnyIO 的嵌套异常稳定为
+“预期 HTTP 401”这一断言语义。
+
+这些 API 虽随普通发行包提供，但只允许用于 Compute MCP Service 的契约测试；生产
+代码和 Gateway 实现不得调用它们，也不得把 Factory 用作生产 signer 或运行时凭证
+链路的一部分。Runtime 私有的畸形 Token、key rotation 和敏感日志测试仍保留在本仓库
+`tests/support` 边界内。
 
 ## 配置
 
@@ -100,8 +173,9 @@ uv build
 ```
 
 完整 CI 覆盖率门禁命令见 [`AGENTS.md`](AGENTS.md)。本切片的测试使用真实 RSA/JWKS
-wire data，以及通过 `httpx.ASGITransport` 的真实 FastMCP HTTP 鉴权和会话路径。
+wire data，以及通过进程内 streaming ASGI transport 的真实 FastMCP HTTP 鉴权和会话
+路径。
 
 当前不包括 Gateway 签名端、数据库、Job/Artifact、Temporal Workflow/Activity、
 对象存储、健康探针、多副本 Session 协调、Event Store、业务授权装饰器或公开的
-`mcp_runtime.testing`。
+生产签名 API。

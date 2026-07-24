@@ -22,6 +22,9 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.65b0,<0.66",
     "opentelemetry-instrumentation-sqlalchemy>=0.65b0,<0.66",
     "opentelemetry-instrumentation-botocore>=0.65b0,<0.66",
+    "anyio>=4.14.2,<5",
+    "pyjwt>=2.13.0,<3",
+    "cryptography>=49.0.0,<50",
 ]
 
 [build-system]
@@ -37,8 +40,6 @@ dev = [
     "pytest-cov>=7.1.0,<8",
     "ruff>=0.15.22",
     "ty>=0.0.61",
-    "pyjwt>=2.13.0,<3",
-    "cryptography>=49.0.0,<50",
 ]
 
 [tool.pytest]
