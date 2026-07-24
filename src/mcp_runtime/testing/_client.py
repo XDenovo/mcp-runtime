@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import (
     AbstractAsyncContextManager,
     asynccontextmanager,
@@ -16,12 +16,10 @@ import anyio
 import httpx
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import StreamableHttpTransport
-from fastmcp.client.transports import http as fastmcp_http
-from mcp.client.streamable_http import StreamableHTTPTransport
+
+from mcp_runtime.testing._asgi import _StreamingASGITransport
 
 _create_memory_object_stream = anyio.create_memory_object_stream
-_is_initialized_notification = StreamableHTTPTransport._is_initialized_notification
-_streamable_http_client_context = fastmcp_http.streamable_http_client
 _receive_streams: ContextVar[list[Any] | None] = ContextVar(
     "mcp_runtime_testing_receive_streams",
     default=None,
@@ -45,14 +43,8 @@ class _TrackedMemoryStreamFactory:
 _tracked_memory_stream_factory = _TrackedMemoryStreamFactory()
 
 
-def _ignore_initialized_notification(*args: Any, **kwargs: Any) -> bool:
-    return False
-
-
 @contextmanager
-def _compatibility_patches(
-    receive_streams: list[Any],
-) -> Iterator[None]:
+def _track_memory_streams(receive_streams: list[Any]) -> Iterator[None]:
     global _patch_users
 
     token = _receive_streams.set(receive_streams)
@@ -61,10 +53,6 @@ def _compatibility_patches(
             anyio.create_memory_object_stream = (  # ty: ignore[invalid-assignment]
                 _tracked_memory_stream_factory
             )
-            StreamableHTTPTransport._is_initialized_notification = (
-                _ignore_initialized_notification
-            )
-            fastmcp_http.streamable_http_client = _closing_streamable_http_client
         _patch_users += 1
 
     try:
@@ -75,56 +63,6 @@ def _compatibility_patches(
             _patch_users -= 1
             if _patch_users == 0:
                 anyio.create_memory_object_stream = _create_memory_object_stream
-                StreamableHTTPTransport._is_initialized_notification = (
-                    _is_initialized_notification
-                )
-                fastmcp_http.streamable_http_client = _streamable_http_client_context
-
-
-@asynccontextmanager
-async def _closing_streamable_http_client(
-    url: str,
-    *,
-    http_client: httpx.AsyncClient | None = None,
-    terminate_on_close: bool = True,
-) -> AsyncIterator[tuple[Any, Any, Callable[[], str | None]]]:
-    if http_client is None:
-        raise RuntimeError("ASGI test transport requires its configured HTTP client")
-
-    read_writer, read = anyio.create_memory_object_stream[Any](0)
-    write, write_reader = anyio.create_memory_object_stream[Any](0)
-    transport = StreamableHTTPTransport(url)
-
-    try:
-        async with anyio.create_task_group() as task_group:
-
-            def start_get_stream() -> None:
-                task_group.start_soon(
-                    transport.handle_get_stream,
-                    http_client,
-                    read_writer,
-                )
-
-            task_group.start_soon(
-                transport.post_writer,
-                http_client,
-                write_reader,
-                read_writer,
-                write,
-                start_get_stream,
-                task_group,
-            )
-            try:
-                yield read, write, transport.get_session_id
-            finally:
-                if transport.session_id and terminate_on_close:
-                    await transport.terminate_session(http_client)
-                task_group.cancel_scope.cancel()
-    finally:
-        await read_writer.aclose()
-        await read.aclose()
-        await write.aclose()
-        await write_reader.aclose()
 
 
 @asynccontextmanager
@@ -141,7 +79,7 @@ async def _streamable_http_app(
     receive_streams: list[Any] = []
 
     try:
-        with _compatibility_patches(receive_streams):
+        with _track_memory_streams(receive_streams):
             async with app.router.lifespan_context(app):
                 yield app
     finally:
@@ -166,7 +104,7 @@ async def _streamable_http_client_for_app(
         **kwargs: Any,
     ) -> httpx.AsyncClient:
         return httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
+            transport=_StreamingASGITransport(app),
             base_url="http://testserver",
             headers=headers,
             timeout=timeout,

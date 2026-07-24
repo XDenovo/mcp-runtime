@@ -173,7 +173,8 @@ uv build
 ```
 
 完整 CI 覆盖率门禁命令见 [`AGENTS.md`](AGENTS.md)。本切片的测试使用真实 RSA/JWKS
-wire data，以及通过 `httpx.ASGITransport` 的真实 FastMCP HTTP 鉴权和会话路径。
+wire data，以及通过进程内 streaming ASGI transport 的真实 FastMCP HTTP 鉴权和会话
+路径。
 
 当前不包括 Gateway 签名端、数据库、Job/Artifact、Temporal Workflow/Activity、
 对象存储、健康探针、多副本 Session 协调、Event Store、业务授权装饰器或公开的

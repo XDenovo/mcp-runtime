@@ -9,8 +9,6 @@ import anyio
 import httpx
 import pytest
 from fastmcp import FastMCP
-from fastmcp.client.transports import http as fastmcp_http
-from mcp.client.streamable_http import StreamableHTTPTransport
 
 from mcp_runtime import (
     InternalAuthSettings,
@@ -109,10 +107,8 @@ async def test_public_assertion_stabilizes_authentication_rejection(
     assert tool_calls == 0
 
 
-async def test_concurrent_public_clients_restore_compatibility_patches() -> None:
+async def test_concurrent_public_clients_remain_isolated() -> None:
     original_create_stream = anyio.create_memory_object_stream
-    original_initialized_check = StreamableHTTPTransport._is_initialized_notification
-    original_client_context = fastmcp_http.streamable_http_client
     first_entered = anyio.Event()
     second_entered = anyio.Event()
     release_first = anyio.Event()
@@ -165,21 +161,12 @@ async def test_concurrent_public_clients_restore_compatibility_patches() -> None
         await first_exited.wait()
         release_second.set()
         results = await tasks
-        patches_restored = (
-            anyio.create_memory_object_stream is original_create_stream
-            and StreamableHTTPTransport._is_initialized_notification
-            is original_initialized_check
-            and fastmcp_http.streamable_http_client is original_client_context
-        )
+        patch_restored = anyio.create_memory_object_stream is original_create_stream
     finally:
         anyio.create_memory_object_stream = original_create_stream
-        StreamableHTTPTransport._is_initialized_notification = (
-            original_initialized_check
-        )
-        fastmcp_http.streamable_http_client = original_client_context
 
     assert results == ["principal-a", "principal-b"]
-    assert patches_restored
+    assert patch_restored
 
 
 async def test_public_client_reenters_server_lifespan_without_leaking() -> None:
@@ -200,8 +187,6 @@ async def test_public_client_reenters_server_lifespan_without_leaking() -> None:
 
 async def test_public_client_cleans_up_after_cancellation() -> None:
     original_create_stream = anyio.create_memory_object_stream
-    original_initialized_check = StreamableHTTPTransport._is_initialized_notification
-    original_client_context = fastmcp_http.streamable_http_client
     settings = _settings()
     credentials = InternalCredentialFactory(settings)
     transport = TrackingTransport(credentials.jwks_transport)
@@ -223,17 +208,10 @@ async def test_public_client_cleans_up_after_cancellation() -> None:
 
     assert transport.close_count == 1
     assert anyio.create_memory_object_stream is original_create_stream
-    assert (
-        StreamableHTTPTransport._is_initialized_notification
-        is original_initialized_check
-    )
-    assert fastmcp_http.streamable_http_client is original_client_context
 
 
 async def test_public_client_cleans_up_after_server_startup_failure() -> None:
     original_create_stream = anyio.create_memory_object_stream
-    original_initialized_check = StreamableHTTPTransport._is_initialized_notification
-    original_client_context = fastmcp_http.streamable_http_client
     settings = _settings()
     credentials = InternalCredentialFactory(settings)
     transport = TrackingTransport(credentials.jwks_transport)
@@ -260,8 +238,3 @@ async def test_public_client_cleans_up_after_server_startup_failure() -> None:
 
     assert transport.close_count == 1
     assert anyio.create_memory_object_stream is original_create_stream
-    assert (
-        StreamableHTTPTransport._is_initialized_notification
-        is original_initialized_check
-    )
-    assert fastmcp_http.streamable_http_client is original_client_context

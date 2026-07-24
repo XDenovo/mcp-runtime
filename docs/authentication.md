@@ -189,8 +189,11 @@ FastMCP 完成。
 
 Factory 不公开私钥、任意 JWT Header/Claim、算法或通用 Token builder。目标 service
 override 只改变 canonical audience，用于证明跨服务隔离。Client 管理应用 lifespan、
-HTTP Client、任务、streams、Session 和当前 MCP SDK 兼容 patch；成功、401、startup
-失败、重复进入、并发退出和取消都执行显式清理。
+HTTP Client、任务、streams 和 Session；成功、401、startup 失败、重复进入、并发退出
+和取消都执行显式清理。Client 仅通过 FastMCP 的公开
+`httpx_client_factory` 扩展点接入私有 streaming ASGI transport，不直接导入或 patch
+MCP SDK；当前 SDK 遗留的 AnyIO receive stream 由并发安全、作用域受限的兼容层跟踪
+并关闭。
 
 ### Runtime 私有测试
 
@@ -203,8 +206,8 @@ uv run --no-sync pytest tests/unit
 
 Integration suite 使用公开 Factory，并保留 `tests/support` 私有 adversarial builder
 来生成畸形 Header/Claim。二者都通过真实 RSA/JWT/JWKS wire data 和
-`httpx.MockTransport` 提供 JWKS，以 FastMCP Streamable HTTP Client 经
-`httpx.ASGITransport` 穿过真实 Bearer middleware。它不使用会绕过 HTTP 认证的
+`httpx.MockTransport` 提供 JWKS，以 FastMCP Streamable HTTP Client 经进程内
+streaming ASGI transport 穿过真实 Bearer middleware。它不使用会绕过 HTTP 认证的
 in-memory Server transport：
 
 ```bash

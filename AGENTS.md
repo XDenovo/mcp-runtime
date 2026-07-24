@@ -162,9 +162,9 @@ uv run --no-sync ruff format --check <changed-path>
   affected module is implemented.
 
 Internal-auth integration tests use real RSA/JWT/JWKS wire data with `httpx.MockTransport`, and a
-real FastMCP Streamable HTTP Client through `httpx.ASGITransport`; they do not require an external
-JWKS process. TODO: When PostgreSQL, MinIO, and Temporal integration-test facilities land, document
-their exact startup, selection, teardown, and CI commands.
+real FastMCP Streamable HTTP Client through the Runtime's in-process streaming ASGI transport; they
+do not require an external JWKS process. TODO: When PostgreSQL, MinIO, and Temporal integration-test
+facilities land, document their exact startup, selection, teardown, and CI commands.
 
 ## Build and Release
 
