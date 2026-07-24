@@ -11,7 +11,7 @@
       "source": "XDenovo/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/close-issue/SKILL.md",
-      "computedHash": "5e010749c557e7f86e7451cb4cedad679ef14863da20b62ea367a35fb2874a73"
+      "computedHash": "749f30446ab65f33a871cd23ee639a44d5d2065d28fb7e7ab247d3cc8fcfe2a6"
     },
     "code-review": {
       "source": "XDenovo/agent-skills",
@@ -23,13 +23,13 @@
       "source": "XDenovo/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/implement/SKILL.md",
-      "computedHash": "f268d5d4f42bf92c6680b767771281a2ea0e5f2fee10c8150b89e815f48bc4f3"
+      "computedHash": "a0147476badf9787d8b72ee56ab107ac1a964335518c318238053a8a35dd62b7"
     },
     "open-pr": {
       "source": "XDenovo/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/open-pr/SKILL.md",
-      "computedHash": "1bd5bc76f082d092c581cbda95252f7a6d9ee7f2e808bf7f53aaa34bd9adfc7e"
+      "computedHash": "13fc51545db069b14be99d386b377f2723b17db6308dfd2a43af546f81c42485"
     },
     "resolving-merge-conflicts": {
       "source": "mattpocock/skills",

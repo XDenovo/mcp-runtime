@@ -17,9 +17,21 @@ Check the PR isn't in draft (`gh pr view --json isDraft`). If it still is, stop:
 
 `gh pr merge`. Confirm the linked issue actually closed as a result — if it didn't (e.g. the PR never carried a `Closes #`), flag this instead of treating it as closed.
 
-## 4. Clean up
+## 4. Verify Project status
 
-Only once the merge succeeded and the issue is confirmed closed: remove the worktree (`git worktree remove .worktrees/<name>`) and delete the branch — local, and remote if the merge didn't already delete it.
+Poll `gh project item-list 1 --owner XDenovo --limit 1000 --format json` by exact content URL for
+the merged PR and completed Issue. Check at most 12 times with 5 seconds between attempts. Both
+items must reach `Status` exactly `Done`.
+
+Do not update Project fields manually. If either item misses the bounded postcondition, stop after
+the successful merge, leave the worktree and branch in place, and report both URLs plus their last
+observed statuses.
+
+## 5. Clean up
+
+Only once the merge succeeded, the issue is confirmed closed, and step 4 reached `Done`: remove
+the worktree (`git worktree remove .worktrees/<name>`) and delete the branch — local, and remote if
+the merge didn't already delete it.
 
 ## Edge cases
 
