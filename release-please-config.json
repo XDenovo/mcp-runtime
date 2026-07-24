@@ -1,5 +1,11 @@
 {
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "python",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "draft": true,
+  "draft-pull-request": true,
+  "bootstrap-sha": "1701a8dd563195b9358b757840af3185dd6f0f69",
   "packages": {
     ".": {
       "package-name": "mcp-runtime"

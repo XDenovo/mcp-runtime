@@ -5,12 +5,38 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release-please:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.30"
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install validation dependencies
+        run: uv sync --locked
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Validate built distributions
+        run: uv run --no-sync python scripts/validate_distribution.py dist
+
       # XDenovo org policy blocks the default GITHUB_TOKEN from creating or
       # approving pull requests (org-wide, not overridable per repo). Mint a
       # short-lived token from the xdenovo-release-bot GitHub App instead,
@@ -28,26 +54,45 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Check out release tag
-        if: ${{ steps.release.outputs.release_created }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ steps.release.outputs.tag_name }}
-
-      - name: Install uv and Python
-        if: ${{ steps.release.outputs.release_created }}
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          version: "0.11.30"
-          python-version: "3.13"
-          enable-cache: true
-
-      - name: Build distributions
-        if: ${{ steps.release.outputs.release_created }}
-        run: uv build
-
-      - name: Upload release assets
-        if: ${{ steps.release.outputs.release_created }}
+      - name: Upload assets to draft Release
+        if: steps.release.outputs.release_created
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload ${{ steps.release.outputs.tag_name }} dist/* --repo ${{ github.repository }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected release tag format"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" dist/* \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Verify draft Release assets
+        if: steps.release.outputs.release_created
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          asset_names="$(
+            gh release view "$RELEASE_TAG" \
+              --json assets,isDraft \
+              --jq 'select(.isDraft == true) | .assets[].name' \
+              --repo "$GITHUB_REPOSITORY"
+          )"
+          wheel_count="$(grep -cE '\.whl$' <<<"$asset_names" || true)"
+          sdist_count="$(grep -cE '\.tar\.gz$' <<<"$asset_names" || true)"
+          if [[ "$wheel_count" != "1" || "$sdist_count" != "1" ]]; then
+            echo "::error::Draft Release must contain one wheel and one sdist"
+            exit 1
+          fi
+
+      - name: Publish verified Release
+        if: steps.release.outputs.release_created
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: >-
+          gh release edit "$RELEASE_TAG"
+          --draft=false
+          --repo "$GITHUB_REPOSITORY"

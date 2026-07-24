@@ -1,115 +1,137 @@
 # 如何发布 `mcp-runtime`
 
-本指南面向具有 Release PR 审批和合并权限的维护者。一次完整发布会产生
-不可变的 `vX.Y.Z` Git tag、GitHub Release、wheel 和 source distribution
-（sdist）。`mcp-runtime` 不发布到包索引；消费方通过 Git tag 引用版本，并在
-自己的 `uv.lock` 中锁定解析后的 commit。
+本指南面向具有 Release PR 审批和合并权限的维护者。一次完整发布会产生不可变的
+`vX.Y.Z` Git tag、GitHub Release、wheel 和 source distribution（sdist）。
+`mcp-runtime` 不发布到包索引；消费方通过 Git tag 引用版本，并在自己的 `uv.lock`
+中锁定解析后的 commit。
 
-> [!WARNING]
-> `v0.1.0` 当前为 **No-Go**。在 [`TODO.md`](../TODO.md) 的最终发布门禁全部满足前，
-> 不得合并 Release PR，也不得创建或移动发布 tag。
->
-> 当前 [`release-please-config.json`](../release-please-config.json) 还没有显式设置
-> `bump-minor-pre-major: true` 和 `include-component-in-tag: false`。在配置与下述
-> 版本和 tag 策略一致前，不得合并 Release PR。
+## `v0.1.0` 发布范围
+
+`v0.1.0` 只发布已批准的 authenticated private MCP server foundation：
+
+- `RuntimeSettings`、`ServerSettings` 和 `InternalAuthSettings`；
+- Gateway 内部 RS256 JWT 与 JWKS 验证；
+- immutable `Principal` 和请求内 `get_principal()`；
+- 固定安全策略的 stateful Streamable HTTP Server 组装与运行入口；
+- 对应的单元测试、真实 JWT/JWKS wire 测试和 ASGI Streamable HTTP 集成测试。
+
+数据库、Job/Artifact、S3、Temporal、健康探针、Gateway signer/JWKS Route、服务模板接入
+和多副本 Session 协调不属于这个版本。它们是后续消费方驱动的切片，不是
+`v0.1.0` 的发布阻塞项。完整边界与已知限制见
+[`README.md`](../README.md) 和 [`authentication.md`](authentication.md)。
+
+## `v0.1.0` Go/No-Go 门禁
+
+只有以下条件全部成立，`v0.1.0` 才是 **Go**：
+
+- Platform Internal Credential Contract 已合并；
+- authenticated runtime 实现和文档已合并，公开 API 中没有占位实现；
+- Runtime CI 的 lint、format、type、测试、statement/branch coverage 和 build 全部通过；
+- Release Please 明确使用 pre-1.0 MINOR 破坏性变更策略和 `vX.Y.Z` tag；
+- Release Notes 只描述最终存在的能力，并明确 `0.x` 兼容策略和当前限制；
+- wheel/sdist 通过干净环境安装、`py.typed`、公开导入和外部消费类型检查；
+- `XDenovo/mcp-runtime` 已启用 immutable releases；
+- Release PR 已由维护者显式审批并决定发布。
+
+CI 通过本身不等于发布决定。合并 Release PR 是维护者作出的显式、外部可见发布动作。
+
+## Release Please 配置
+
+[`release-please-config.json`](../release-please-config.json) 固定以下策略：
+
+- `bump-minor-pre-major: true`：`0.x` 的 breaking change 产生 MINOR bump；
+- `include-component-in-tag: false`：tag 使用 `vX.Y.Z`，不添加包名前缀；
+- `draft-pull-request: true`：Release PR 在人工审查前保持 Draft；
+- `draft: true`：先创建 Draft Release，上传并核验产物后才发布；
+- `bootstrap-sha`：首版 Changelog 从 repository reset 之后开始，排除已经删除的
+  placeholder API 历史。
+
+`bootstrap-sha` 只影响首次发布；`v0.1.0` 生成后，Release Please 会以最近已发布版本
+作为后续 Changelog 的起点。
 
 ## 发布前确认
 
-### 确认版本已经具备发布条件
-
-确认当前版本的发布 Issue 或检查清单已经给出明确的 Go 决定。对于
-`v0.1.0`，使用 [`TODO.md`](../TODO.md) 的最终发布门禁；CI 通过本身不代表
-版本已经可以发布。
-
-如果本次发布包含公开 API 的破坏性变更，确认
-对应 API 设计文档、行为测试、Release Notes 和消费方迁移说明已经同步更新。
-
-### 找到 Release PR
+### 找到并审查 Release PR
 
 日常变更合并到 `main` 后，[`release-please`](https://github.com/googleapis/release-please)
-会根据 `main` 上的 Conventional Commits 创建或更新 Release PR。查找带有
-`autorelease: pending` 标签的开放 PR，不要依赖可能随配置变化的 PR 标题。
+会创建或更新带 `autorelease: pending` 标签的 Draft PR。不要只依赖可能变化的 PR 标题。
 
-如果存在应发布的提交但没有 Release PR，先检查
-[`Release Please` workflow](../.github/workflows/release-please.yml)。若
-`Generate release-please token` 步骤失败，确认 `xdenovo-release-bot` 仍安装在
-本仓库，并请组织管理员检查 `APP_ID` 和 `APP_PRIVATE_KEY` secrets 的可见范围。
-不要改用默认 `GITHUB_TOKEN` 绕过该流程；XDenovo 组织策略禁止它创建或批准 PR。
+审查时确认：
 
-### 核对目标版本和 tag
+- `.release-please-manifest.json`、`pyproject.toml` 和 `CHANGELOG.md` 使用同一版本；
+- `CHANGELOG.md` 与 PR 描述准确概括实际存在的用户可见能力；
+- 破坏性变更包含具体迁移说明；
+- 首版说明 `0.x` 兼容策略与已知限制；
+- CI 的 `Quality` job 通过。
 
-`mcp-runtime` 使用 SemVer。审查 0.x Release PR 时，至少核对以下约束：
+若有应发布的提交但没有 Release PR，检查
+[`release-please.yml`](../.github/workflows/release-please.yml)。若
+`Generate release-please token` 失败，确认 `xdenovo-release-bot` 仍安装在本仓库，
+并由组织管理员检查 `APP_ID` 和 `APP_PRIVATE_KEY` secrets。不要改用默认
+`GITHUB_TOKEN` 绕过组织策略。
 
-- `fix:` 产生 PATCH bump；
-- `feat:` 产生 MINOR bump；
-- `feat!:`、其他带 `!` 的类型或 `BREAKING CHANGE:` footer 产生 MINOR bump；
-- tag 必须为 `vX.Y.Z`，不得包含包名或其他前缀。
+### 本地验证
 
-其他提交类型是否形成发布由 `release-please` 的 Python 策略和仓库配置决定；
-如果 Release PR 提议的版本无法由 `main` 上的提交解释，也应停止发布。
+从干净的发布候选分支运行：
 
-上述 breaking-change 和 tag 策略依赖
-[`release-please-config.json`](../release-please-config.json) 中的
-`bump-minor-pre-major: true` 和 `include-component-in-tag: false`。如果配置缺少任一
-设置，或者 Release PR 提议的版本与策略不一致，停止发布并先修正自动化。
+```bash
+uv sync --locked
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+uv run --no-sync ty check
+uv run --no-sync pytest \
+  --cov=mcp_runtime \
+  --cov-config=pyproject.toml \
+  --cov-branch \
+  --cov-report=term-missing \
+  --cov-report=xml \
+  --cov-fail-under=90
+uv build
+uv run --no-sync python scripts/validate_distribution.py dist
+```
 
-发布 `1.0.0` 需要单独确认 API 已经稳定并批准版本策略变更，不能仅通过修改
-Release PR 或手工创建 tag 完成。
+最后一条命令要求 `dist/` 中恰好有一个 wheel 和一个 sdist，并验证：
 
-### 审查 Release PR
-
-确认 Release PR 对以下文件使用同一个目标版本：
-
-- `.release-please-manifest.json`；
-- `pyproject.toml`；
-- `CHANGELOG.md` 中的新版本条目。
-
-检查 `CHANGELOG.md` 和 PR 描述是否准确概括用户可见变更。破坏性变更必须包含
-具体迁移步骤；首个版本还必须说明已知限制。如果版本文件不一致，停止发布并修正
-`release-please` 配置或版本来源，不要通过手工修改 tag 补偿。
-
-最后确认 Release PR 已获得要求的人工审批，且
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 中的 `Quality` job 全部
-通过。
+- 两个 archive 都包含 `py.typed`；
+- wheel 可安装到独立 Python 3.13 环境；
+- 隔离解释器能从安装产物导入并使用公开 API；
+- 外部消费样例能通过 `ty`。
 
 ## 合并并监控发布
 
-1. 合并已经批准的 Release PR。不要在此之前手工创建 tag 或 GitHub Release。
-2. 打开这次合并触发的 `Release Please` workflow run。
-3. 等待 workflow 创建 tag 和 GitHub Release，然后从该 tag 构建 wheel 与 sdist 并
-   上传到 Release。
-4. 只有整个 workflow 成功后，才进入发布结果验证。
+1. 审批 Release PR 并将其标记为 Ready。
+2. 合并 Release PR；不要预先手工创建 tag 或 Release。
+3. 观察该 merge 触发的 `Release Please` workflow。
+4. Workflow 在调用 Release Please 前构建并验证产物。
+5. Release Please 创建 Draft Release。
+6. Workflow 上传 wheel 与 sdist，确认 Draft 中各有且仅有一个对应产物。
+7. 只有上述步骤全部成功，Workflow 才把 Draft 发布为正式 Release。
 
-Release PR 不会自动合并；合并动作是维护者作出的显式发布决定。
+仓库必须在首次发布前启用 immutable releases。发布后，GitHub 会锁定 Release
+资产和关联 tag；修复必须使用更高版本，不能移动 tag 或替换资产。
 
 ## 验证发布结果
 
 逐项确认：
 
-- `Release Please` workflow run 成功；
-- tag 名为预期的 `vX.Y.Z`，并指向合并后的 Release PR commit；
-- GitHub Release 已发布，Release Notes 与已批准的变更内容一致；
-- Release 同时包含 wheel 和 sdist；
-- tag 中的 `.release-please-manifest.json`、`pyproject.toml` 和 `CHANGELOG.md`
+- `Release Please` workflow 成功；
+- tag 恰为预期的 `vX.Y.Z`，并指向 Release PR merge commit；
+- GitHub Release 已发布、不是 Draft，并标记为 immutable；
+- Release Notes 与已批准的 `CHANGELOG.md` 一致；
+- Release 同时包含一个 wheel 和一个 sdist；
+- tag 中 `.release-please-manifest.json`、`pyproject.toml` 和 `CHANGELOG.md`
   版本一致；
-- 当前版本发布清单要求的干净环境安装和 smoke test 已通过。
+- 下载 Release wheel 到干净目录后，再次运行隔离 import smoke test。
 
-对于 `v0.1.0`，还必须完成 [`TODO.md`](../TODO.md) 中从最终 tag 安装并执行 smoke
-test 的步骤。所有检查完成后，才能在发布 Issue 中将发布标记为完成。
+这些检查完成后，才能关闭发布工作和对应的 Platform Initiative。
 
 ## 处理发布失败
 
-如果 workflow 在创建 tag 和 GitHub Release 前失败，修正根因后重新运行 workflow；
-不要改为手工创建发布对象。
+若 build 或 distribution validation 失败，Release Please 尚未运行，因此不会创建 tag
+或 Release。修正根因后重新运行 workflow。
 
-如果 tag 或 GitHub Release 已经创建，但构建或附件上传失败：
+若 Draft Release 创建后，上传或产物核验失败，Draft 保持未发布；不要手工发布它。
+修正根因后重跑 workflow，上传步骤允许覆盖 Draft 中的同名产物。
 
-1. 将此次发布视为不完整，不要对外宣告成功；
-2. 不要移动、删除或复用已经创建的 tag；
-3. 在发布 Issue 中记录已创建的对象、失败步骤和 workflow run；
-4. 按经过批准的恢复流程补齐发布，或发布一个更高的新版本。
-
-在首个版本发布前，必须先解决 [`TODO.md`](../TODO.md) 中“release workflow
-失败时不会留下被误认为完整发布的 Release”这一门禁。如果完整发布后才发现
-产品缺陷，保留原有 tag，并通过新的更高版本修复；需要回滚的消费方应恢复到
-上一已知可用的 tag 或已锁定 commit。
+若正式 Release 已发布后发现缺陷，immutable release 不允许替换资产或移动 tag。
+保留原版本，通过新的更高版本修复；消费方应恢复到上一已知 commit 或升级到修复版本。

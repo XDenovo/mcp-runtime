@@ -55,3 +55,6 @@ jobs:
 
       - name: Build package
         run: uv build
+
+      - name: Validate built distributions
+        run: uv run --no-sync python scripts/validate_distribution.py dist

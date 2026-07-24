@@ -170,6 +170,9 @@ their exact startup, selection, teardown, and CI commands.
 
 - `uv build` produces the wheel and source distribution checked by CI and attached to GitHub
   Releases.
+- `uv run --no-sync python scripts/validate_distribution.py dist` checks the built wheel and sdist,
+  installs the wheel into a clean Python environment, verifies `py.typed` and the public imports,
+  and type-checks an external consumer against the installed artifact.
 - Releases use SemVer and tags named `vX.Y.Z`. During 0.x development, a breaking change produces
   a MINOR bump.
 - release-please derives versions and release notes from Conventional Commits and maintains the
@@ -179,9 +182,6 @@ their exact startup, selection, teardown, and CI commands.
 - XDeNovo organization policy prevents the default `GITHUB_TOKEN` from creating release PRs.
   Preserve the narrowly scoped GitHub App token flow described in `docs/releasing.md`.
 - Keep third-party GitHub Actions pinned to full commit SHAs.
-
-TODO: When clean-wheel installation, `py.typed`, and external-consumer type checks enter CI,
-document their exact validation commands here.
 
 ## Git and Pull Requests
 
