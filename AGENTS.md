@@ -36,7 +36,7 @@
   package.
 - Keep credentials, JWTs, database passwords, object-storage secrets, and presigned URLs out of
   logs and exception text.
-- Test doubles live in `mcp_runtime.testing` and are imported explicitly; do not re-export them
+- First-slice test support lives privately in `tests/support`; do not publish or re-export it
   through the production package API.
 
 ## Stack and Sources of Truth
@@ -132,6 +132,18 @@ Once behavior tests exist, also run:
 uv run --no-sync pytest
 ```
 
+The complete coverage-gated command used by CI is:
+
+```bash
+uv run --no-sync pytest \
+  --cov=mcp_runtime \
+  --cov-config=pyproject.toml \
+  --cov-branch \
+  --cov-report=term-missing \
+  --cov-report=xml \
+  --cov-fail-under=90
+```
+
 Focused checks:
 
 ```bash
@@ -144,16 +156,15 @@ uv run --no-sync ruff format --check <changed-path>
 - Test files use `tests/test_*.py`; pytest runs async tests with `asyncio_mode = "auto"`.
 - Prefer behavior assertions over import-only checks.
 - Coverage measures `mcp_runtime` statements and branches. Focused tests do not enforce a global
-  threshold; the complete CI suite will own the release gate once real behavior tests exist.
+  threshold; the complete CI suite enforces at least 90% and writes `coverage.xml`.
 - Cover invalid configuration, identity and scope failures, service-boundary violations,
   idempotency, retries, cancellation, concurrent context isolation, and resource cleanup when the
   affected module is implemented.
 
-TODO: When PostgreSQL, MinIO, Temporal, JWKS, and FastMCP integration-test facilities land,
-document their exact startup, selection, teardown, and CI commands.
-
-TODO: When coverage becomes a release gate, document the exact command, measured module scope,
-and required threshold.
+Internal-auth integration tests use real RSA/JWT/JWKS wire data with `httpx.MockTransport`, and a
+real FastMCP Streamable HTTP Client through `httpx.ASGITransport`; they do not require an external
+JWKS process. TODO: When PostgreSQL, MinIO, and Temporal integration-test facilities land, document
+their exact startup, selection, teardown, and CI commands.
 
 ## Build and Release
 

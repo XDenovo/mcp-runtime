@@ -50,7 +50,8 @@ pytest-cov 集成 Coverage.py，并以 `mcp_runtime` 为唯一生产源码范围
 - 同时采集语句和分支覆盖率，并使用相对路径保存结果，保证本地与 CI 报告可比较；
 - 终端报告显示缺失行，CI 可输出 `coverage.xml`，本地按需生成 `htmlcov`；
 - 普通和聚焦 pytest 调用不在全局 `addopts` 中强制 coverage，完整 CI 测试显式启用；
-- 覆盖率阈值属于 CI 和发布质量策略，在真实行为测试形成后设置并逐步提高；
+- 完整 CI 测试强制 `mcp_runtime` statement/branch 综合覆盖率至少 90%，普通和聚焦测试
+  不强制启用 coverage；
 - 覆盖率数字不能替代身份验证、服务隔离、幂等、取消、并发和资源清理的行为断言。
 
 ## MCP Server、配置与内部身份
@@ -87,6 +88,10 @@ Runtime Claim Policy 在已验签的 `AccessToken.claims` 上强制
 `exp - iat` 不超过 5 分钟；`nbf` 可选但出现时必须验证，`iat`/`nbf` 最多允许 30 秒
 时钟偏差，`exp` 严格过期。Runtime 将该上下文映射为稳定的 `Principal`，服务不直接
 依赖 FastMCP 的 Token 类型。
+
+实现细节、环境变量、失败语义和可执行示例见
+[`authentication.md`](authentication.md)。生产代码不依赖 PyJWT；测试套件将 PyJWT 和
+Cryptography 作为直接开发依赖，用于生成真实 RSA/JWT/JWKS wire data。
 
 JWKS 请求复用由 Server 生命周期管理的共享 `httpx.AsyncClient`。Runtime 固定使用
 平台批准的 RS256，不把 JWT Header 中的算法作为配置来源；私钥保管、轮换、JWKS
