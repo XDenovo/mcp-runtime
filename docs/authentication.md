@@ -1,6 +1,7 @@
 # Runtime 内部身份验证
 
-本文描述 `mcp-runtime` 首个发布切片实现的配置、认证、请求身份和 Server 生命周期。
+本文描述 `mcp-runtime` 实现的配置、认证、请求身份、Server 生命周期和下游契约测试
+边界。
 规范来源是 Platform
 [Internal Credential Contract](https://github.com/XDenovo/platform/blob/main/docs/internal-credential-contract.md)；
 本文说明 Python Runtime 如何实现该契约，不另行定义 Gateway Token。
@@ -148,7 +149,8 @@ startup 失败和取消路径都会清理 Runtime 资源。同一 Server 的 lif
 重复进入；仅构造但从未运行不会创建 HTTP Client。
 
 `jwks_transport` 只是在单元/集成测试中注入 `httpx.AsyncBaseTransport` 的窄 seam。
-Runtime 始终拥有 Client、timeout、redirect 和关闭策略，生产服务不应传入它。
+公开的 `InternalCredentialFactory.jwks_transport` 实现这个 seam；Runtime 始终拥有
+Client、timeout、redirect 和关闭策略，生产服务不应传入它。
 
 ## 失败和日志语义
 
@@ -171,16 +173,39 @@ FastMCP 完成。
 
 ## 测试策略
 
+### 下游支持的契约测试 API
+
+`mcp_runtime.testing` 随普通 wheel/sdist 发布，不使用额外 dependency extra，也不在
+顶层 `mcp_runtime` re-export。它公开三个 typed API：
+
+- `InternalCredentialFactory(settings)`：每个实例生成独立临时 RSA key 和内存 JWKS
+  transport；`issue()` 固定 RS256、issuer、300 秒整数时间、`mcp:invoke` 和单一目标
+  audience，只接受 subject、无重复业务 scope 和可选目标 `service_id`；
+- `streamable_http_client(server, credential=...)`：通过进程内 ASGI 应用进入真实
+  Bearer middleware、stateful Streamable HTTP 初始化和 Session；
+- `assert_authentication_rejected(client_context)`：pytest-independent 的 async 断言，
+  只接受 HTTP 401，并隐藏 MCP SDK、AnyIO 和 `ExceptionGroup` 的嵌套形状与敏感错误
+  上下文。
+
+Factory 不公开私钥、任意 JWT Header/Claim、算法或通用 Token builder。目标 service
+override 只改变 canonical audience，用于证明跨服务隔离。Client 管理应用 lifespan、
+HTTP Client、任务、streams、Session 和当前 MCP SDK 兼容 patch；成功、401、startup
+失败、重复进入、并发退出和取消都执行显式清理。
+
+### Runtime 私有测试
+
 Unit suite 覆盖配置、严格 Claims、时间边界、Principal、JWKS cache/rotation、失败分类、
-日志安全和资源生命周期：
+日志安全、公开测试 Factory 和资源生命周期：
 
 ```bash
 uv run --no-sync pytest tests/unit
 ```
 
-Integration suite 生成真实临时 RSA key 和 JWT，通过 `httpx.MockTransport` 提供真实
-JWKS wire response，并以 FastMCP Streamable HTTP Client 经 `httpx.ASGITransport`
-穿过真实 Bearer middleware。它不使用会绕过 HTTP 认证的 in-memory Server transport：
+Integration suite 使用公开 Factory，并保留 `tests/support` 私有 adversarial builder
+来生成畸形 Header/Claim。二者都通过真实 RSA/JWT/JWKS wire data 和
+`httpx.MockTransport` 提供 JWKS，以 FastMCP Streamable HTTP Client 经
+`httpx.ASGITransport` 穿过真实 Bearer middleware。它不使用会绕过 HTTP 认证的
+in-memory Server transport：
 
 ```bash
 uv run --no-sync pytest tests/integration
@@ -203,7 +228,8 @@ uv run --no-sync pytest \
 
 ## 明确不包含
 
-本切片不实现 Gateway signer/JWKS Route、外部 OAuth Token 接受、业务授权装饰器、
+本 Runtime 不实现生产 Gateway signer/JWKS Route、外部 OAuth Token 接受、业务授权装饰器、
 数据库、Job/JobStep/Artifact、S3、Temporal Workflow/Activity/Worker、健康探针、
-Event Store、多副本 Session 协调或 key 运维 runbook。测试 helper 保持在私有
-`tests/support`，不发布 `mcp_runtime.testing`。
+Event Store、多副本 Session 协调或 key 运维 runbook。`mcp_runtime.testing` 只拥有
+canonical 下游契约测试；任意畸形 Token、Header/Claim 和私钥操作仍保持在私有
+`tests/support`。

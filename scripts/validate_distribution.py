@@ -43,22 +43,32 @@ def _project_version(repository_root: Path) -> str:
 def _validate_archive_contents(wheel: Path, sdist: Path) -> None:
     with zipfile.ZipFile(wheel) as wheel_archive:
         wheel_files = set(wheel_archive.namelist())
-    if f"{PACKAGE_PATH}/py.typed" not in wheel_files:
-        raise RuntimeError("wheel does not contain mcp_runtime/py.typed")
+    required_wheel_files = {
+        f"{PACKAGE_PATH}/py.typed",
+        f"{PACKAGE_PATH}/testing/__init__.py",
+    }
+    missing_wheel_files = required_wheel_files - wheel_files
+    if missing_wheel_files:
+        raise RuntimeError(f"wheel is missing required files: {missing_wheel_files}")
 
     with tarfile.open(sdist, mode="r:gz") as sdist_archive:
         sdist_files = {
             member.name.removeprefix(f"{sdist.stem.removesuffix('.tar')}/")
             for member in sdist_archive.getmembers()
         }
-    if f"src/{PACKAGE_PATH}/py.typed" not in sdist_files:
-        raise RuntimeError("sdist does not contain src/mcp_runtime/py.typed")
+    required_sdist_files = {
+        f"src/{PACKAGE_PATH}/py.typed",
+        f"src/{PACKAGE_PATH}/testing/__init__.py",
+    }
+    missing_sdist_files = required_sdist_files - sdist_files
+    if missing_sdist_files:
+        raise RuntimeError(f"sdist is missing required files: {missing_sdist_files}")
 
 
-def _validate_installed_wheel(
+def _validate_installed_artifact(
     *,
     repository_root: Path,
-    wheel: Path,
+    artifact: Path,
     expected_version: str,
 ) -> None:
     with tempfile.TemporaryDirectory(prefix="mcp-runtime-dist-") as temp_directory:
@@ -73,7 +83,7 @@ def _validate_installed_wheel(
             "install",
             "--python",
             str(python),
-            str(wheel),
+            str(artifact),
         )
 
         runtime_smoke = textwrap.dedent(
@@ -81,6 +91,7 @@ def _validate_installed_wheel(
             from importlib.metadata import version
             from importlib.resources import files
 
+            import mcp_runtime
             from mcp_runtime import (
                 InternalAuthSettings,
                 Principal,
@@ -89,6 +100,11 @@ def _validate_installed_wheel(
                 create_server,
                 get_principal,
                 run_server,
+            )
+            from mcp_runtime.testing import (
+                InternalCredentialFactory,
+                assert_authentication_rejected,
+                streamable_http_client,
             )
 
             assert version({PACKAGE_NAME!r}) == {expected_version!r}
@@ -109,6 +125,17 @@ def _validate_installed_wheel(
             assert Principal("subject", frozenset({{"mcp:invoke"}})).subject == "subject"
             assert callable(get_principal)
             assert callable(run_server)
+            assert not hasattr(mcp_runtime, "InternalCredentialFactory")
+
+            credentials = InternalCredentialFactory(settings)
+            credential = credentials.issue(
+                subject="subject",
+                scopes=("example:read",),
+            )
+            assert isinstance(credential, str)
+            assert credentials.jwks_transport is not None
+            assert callable(streamable_http_client)
+            assert callable(assert_authentication_rejected)
             """
         )
         _run(str(python), "-I", "-c", runtime_smoke, cwd=consumer_root)
@@ -138,6 +165,11 @@ def _validate_installed_wheel(
                     ServerSettings,
                     create_server,
                 )
+                from mcp_runtime.testing import (
+                    InternalCredentialFactory,
+                    assert_authentication_rejected,
+                    streamable_http_client,
+                )
 
                 settings: RuntimeSettings = RuntimeSettings(
                     service_id="typed-consumer",
@@ -152,6 +184,18 @@ def _validate_installed_wheel(
                     scopes=frozenset({"mcp:invoke"}),
                 )
                 server = create_server(settings)
+                credentials: InternalCredentialFactory = InternalCredentialFactory(
+                    settings
+                )
+                credential: str = credentials.issue(
+                    subject="subject",
+                    scopes=("example:read",),
+                )
+                client_context = streamable_http_client(
+                    server,
+                    credential=credential,
+                )
+                rejection_assertion = assert_authentication_rejected
                 identity: tuple[str, str] = (server.name, principal.subject)
                 """
             ).lstrip(),
@@ -188,11 +232,12 @@ def main() -> None:
     expected_version = _project_version(repository_root)
 
     _validate_archive_contents(wheel, sdist)
-    _validate_installed_wheel(
-        repository_root=repository_root,
-        wheel=wheel,
-        expected_version=expected_version,
-    )
+    for artifact in (wheel, sdist):
+        _validate_installed_artifact(
+            repository_root=repository_root,
+            artifact=artifact,
+            expected_version=expected_version,
+        )
 
     print(
         f"validated {wheel.name} and {sdist.name} for {PACKAGE_NAME} {expected_version}"

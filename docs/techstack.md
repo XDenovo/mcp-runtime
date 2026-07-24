@@ -18,6 +18,7 @@
 | MCP Server | FastMCP 3.x、`fastmcp[apps]` |
 | Configuration | Pydantic Settings 2 |
 | Internal Authentication | FastMCP JWT Verifier、Runtime Claim Policy、`Principal` 映射、`httpx` |
+| Auth Contract Testing | PyJWT、Cryptography、AnyIO、MCP Python SDK、`httpx.ASGITransport` |
 | Persistence | SQLAlchemy 2.x、Psycopg 3 |
 | Migrations | Alembic，由 Compute MCP Service 拥有 |
 | Durable Workflow | Temporal Python SDK |
@@ -90,8 +91,17 @@ Runtime Claim Policy 在已验签的 `AccessToken.claims` 上强制
 依赖 FastMCP 的 Token 类型。
 
 实现细节、环境变量、失败语义和可执行示例见
-[`authentication.md`](authentication.md)。生产代码不依赖 PyJWT；测试套件将 PyJWT 和
-Cryptography 作为直接开发依赖，用于生成真实 RSA/JWT/JWKS wire data。
+[`authentication.md`](authentication.md)。生产 verifier 不调用 PyJWT 或接收私钥；
+公开的 `mcp_runtime.testing` 契约测试 Factory 使用 PyJWT 和 Cryptography 生成临时
+RSA/JWT/JWKS wire data。因为该子模块随普通发行包提供，PyJWT、Cryptography、AnyIO
+和 MCP Python SDK 都是明确的 Runtime 直接依赖，不依赖 FastMCP 的传递依赖或 testing
+extra。
+
+公开测试 Client 使用 `httpx.ASGITransport` 和真实 FastMCP/MCP Streamable HTTP Client
+穿过 Bearer middleware 与 stateful Session。对当前 SDK 的 stream/task 兼容处理由
+Runtime 封装并负责并发、取消和失败清理；下游测试不直接 patch SDK，也不解析
+`ExceptionGroup`。临时 signing identity 仅属于契约测试，不改变 Gateway 独占生产私钥
+和 JWKS 发布的信任边界。
 
 JWKS 请求复用由 Server 生命周期管理的共享 `httpx.AsyncClient`。Runtime 固定使用
 平台批准的 RS256，不把 JWT Header 中的算法作为配置来源；私钥保管、轮换、JWKS
