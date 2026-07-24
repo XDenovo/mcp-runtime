@@ -11,7 +11,7 @@
       "source": "XDenovo/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/close-issue/SKILL.md",
-      "computedHash": "749f30446ab65f33a871cd23ee639a44d5d2065d28fb7e7ab247d3cc8fcfe2a6"
+      "computedHash": "ca4c5092dc38f5e1b85129be9678f0be2e5cc0c66064f4f5fd6f8229b221deef"
     },
     "code-review": {
       "source": "XDenovo/agent-skills",
