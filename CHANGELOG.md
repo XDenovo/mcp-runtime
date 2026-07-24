@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/XDenovo/mcp-runtime/compare/v0.2.0...v0.2.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **release:** keep uv.lock synchronized ([#14](https://github.com/XDenovo/mcp-runtime/issues/14)) ([293f03e](https://github.com/XDenovo/mcp-runtime/commit/293f03e6c215f8751af4ba9da135b3072faba894)), closes [#13](https://github.com/XDenovo/mcp-runtime/issues/13)
+
 ## [0.2.0](https://github.com/XDenovo/mcp-runtime/compare/v0.1.0...v0.2.0) (2026-07-24)
 
 
