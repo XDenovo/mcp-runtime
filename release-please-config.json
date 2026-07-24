@@ -8,7 +8,14 @@
   "bootstrap-sha": "1701a8dd563195b9358b757840af3185dd6f0f69",
   "packages": {
     ".": {
-      "package-name": "mcp-runtime"
+      "package-name": "mcp-runtime",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value == \"mcp-runtime\")].version"
+        }
+      ]
     }
   }
 }
