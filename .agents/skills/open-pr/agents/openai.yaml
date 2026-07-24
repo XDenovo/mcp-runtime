@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open PR"
+  short_description: "Lint, test, open a draft PR, review, fix, and un-draft"
+  default_prompt: "Use $open-pr to turn this branch into a reviewed draft PR."

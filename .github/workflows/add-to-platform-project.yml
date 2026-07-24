@@ -1,0 +1,63 @@
+# Add Issues and Pull Requests to the organization delivery project.
+#
+# Required organization variables:
+#   - PLATFORM_PROJECT_ID
+#   - PROJECT_BOT_CLIENT_ID
+#
+# Required organization secret:
+#   - PROJECT_BOT_PRIVATE_KEY
+#
+# This workflow handles trusted metadata only. Never add a checkout, download,
+# build, test, or other execution of pull request code.
+
+name: Add to XDenovo Platform project
+
+on:
+  issues:
+    types: [opened, reopened, transferred]
+  # This event can access organization secrets for pull requests from forks.
+  # Keep this workflow metadata-only: never check out or execute pull request code.
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+# The workflow uses a short-lived GitHub App token instead of GITHUB_TOKEN.
+permissions: {}
+
+jobs:
+  add-to-project:
+    name: Add to project
+    if: github.repository_owner == 'XDenovo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.PROJECT_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PROJECT_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-organization-projects: write
+          permission-issues: read
+          permission-pull-requests: read
+
+      - name: Add item to XDenovo Platform project
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PROJECT_ID: ${{ vars.PLATFORM_PROJECT_ID }}
+          CONTENT_ID: ${{ github.event.issue.node_id || github.event.pull_request.node_id }}
+          GRAPHQL_QUERY: >-
+            mutation($project: ID!, $content: ID!) {
+              addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                item {
+                  id
+                }
+              }
+            }
+        run: |
+          gh api graphql \
+            -f query="$GRAPHQL_QUERY" \
+            -f project="$PROJECT_ID" \
+            -f content="$CONTENT_ID"

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "skills": {
+    "aws-sdk-python-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-python-usage/SKILL.md",
+      "computedHash": "cdd24e3232b66ff9c25859cd4c540d65fab74e0ddf7d5fd1b39576692463038f"
+    },
+    "close-issue": {
+      "source": "XDenovo/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/close-issue/SKILL.md",
+      "computedHash": "5e010749c557e7f86e7451cb4cedad679ef14863da20b62ea367a35fb2874a73"
+    },
+    "code-review": {
+      "source": "XDenovo/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/code-review/SKILL.md",
+      "computedHash": "937bf8db7daad11bbb5cd8e7c8458b47187635255fca2d341c06e7612050e8ce"
+    },
+    "implement": {
+      "source": "XDenovo/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/implement/SKILL.md",
+      "computedHash": "f268d5d4f42bf92c6680b767771281a2ea0e5f2fee10c8150b89e815f48bc4f3"
+    },
+    "open-pr": {
+      "source": "XDenovo/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/open-pr/SKILL.md",
+      "computedHash": "1bd5bc76f082d092c581cbda95252f7a6d9ee7f2e808bf7f53aaa34bd9adfc7e"
+    },
+    "resolving-merge-conflicts": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/resolving-merge-conflicts/SKILL.md",
+      "computedHash": "28aad6f8b1b7025abc8892fa8890f68fe1533499b28a565f416b159131d22fad"
+    },
+    "sqlalchemy": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "github",
+      "skillPath": "toolchains/python/data/sqlalchemy/SKILL.md",
+      "computedHash": "f1fe469a7177198fed4bdbba9ffd23110bf9c548afab39f99951da5756fbf272"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "computedHash": "81eca2a5b53a63f481c0849be7a663a8cd43d5cf53f32b644ec0a2f50cf91aa2"
+    },
+    "temporal-developer": {
+      "source": "temporalio/skill-temporal-developer",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "6445528e3045e32bf39e0e3b7581cf7fe05b04bb871d3feee52b3fc4faf33c57"
+    }
+  }
+}

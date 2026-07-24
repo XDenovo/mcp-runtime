@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review changes against specs and engineering risk"
+  default_prompt: "Use $code-review to review this change as a ship gate."

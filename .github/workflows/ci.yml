@@ -43,7 +43,13 @@ jobs:
         run: uv run --no-sync ty check
 
       - name: Test
-        run: uv run --no-sync pytest
+        if: ${{ hashFiles('tests/**/test_*.py') != '' }}
+        run: >-
+          uv run --no-sync pytest
+          --cov=mcp_runtime
+          --cov-config=pyproject.toml
+          --cov-report=term-missing
+          --cov-report=xml
 
       - name: Build package
         run: uv build
