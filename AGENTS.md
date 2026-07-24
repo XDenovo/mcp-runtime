@@ -168,11 +168,10 @@ facilities land, document their exact startup, selection, teardown, and CI comma
 
 ## Build and Release
 
-- `uv build` produces the wheel and source distribution checked by CI and attached to GitHub
-  Releases.
-- `uv run --no-sync python scripts/validate_distribution.py dist` checks the built wheel and sdist,
-  installs the wheel into a clean Python environment, verifies `py.typed` and the public imports,
-  and type-checks an external consumer against the installed artifact.
+- `uv build` produces the wheel and source distribution attached to GitHub Releases.
+- `uv run --no-sync python scripts/validate_distribution.py dist/*.whl` installs the built wheel
+  into a clean Python environment, verifies `py.typed`, runs a service-shaped public API scenario,
+  and type-checks that same external consumer against the installed artifact.
 - Releases use SemVer and tags named `vX.Y.Z`. During 0.x development, a breaking change produces
   a MINOR bump.
 - release-please derives versions and release notes from Conventional Commits and maintains the

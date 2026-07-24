@@ -15,7 +15,7 @@
 - 经真实 Bearer middleware 和 stateful Streamable HTTP Session 的进程内 Client；
 - pytest-independent HTTP 401 断言，不向下游暴露 SDK/AnyIO 异常形状；
 - 成功、拒绝、失败、并发退出和取消路径的资源与兼容 patch 清理；
-- wheel/sdist import、`py.typed` 和外部消费类型检查。
+- wheel 干净安装、`py.typed` 和 service-shaped 外部消费运行/类型检查。
 
 该测试 Factory 不是生产 Gateway signer。`v0.2.0` 不增加任意 JWT builder、私钥运维、
 外部 OAuth、业务授权、数据库、Artifact、S3 或 Temporal 能力。
@@ -30,7 +30,7 @@
 - Client 和断言不向下游暴露 FastMCP、MCP SDK、AnyIO 或 `ExceptionGroup` 细节；
 - 并发、重复 lifespan、startup failure、401 和 cancellation 测试证明资源与兼容
   patch 被清理；
-- `mcp_runtime.testing` 存在于 wheel/sdist，并从隔离安装环境成功 import/type-check；
+- `mcp_runtime.testing` 从安装 wheel 的隔离环境成功运行并通过外部消费类型检查；
 - Quality job 和本地完整 coverage/distribution gate 全部通过；
 - 维护者审批并合并 Release Please 生成的 `v0.2.0` Release PR。
 
@@ -116,15 +116,19 @@ uv run --no-sync pytest \
   --cov-report=xml \
   --cov-fail-under=90
 uv build
-uv run --no-sync python scripts/validate_distribution.py dist
+uv run --no-sync python scripts/validate_distribution.py dist/*.whl
 ```
 
-最后一条命令要求 `dist/` 中恰好有一个 wheel 和一个 sdist，并验证：
+最后一条命令接收 `uv build` 生成的明确 wheel；若本地 `dist/` 留有多个版本，请把通配符
+替换成当前构建的具体文件名。它从下游服务的公开边界验证：
 
-- 两个 archive 都包含 `py.typed`；
 - wheel 可安装到独立 Python 3.13 环境；
-- 隔离解释器能从安装产物导入并使用公开 API；
-- 外部消费样例能通过 `ty`。
+- 安装包包含标准 `py.typed` marker；
+- service-shaped consumer 能生成 Credential，并通过真实鉴权会话列出 Tool；
+- 同一份 consumer 源码能针对安装产物通过 `ty`。
+
+`uv build` 仍生成并检查可构建的 sdist，Release workflow 也会验证并上传一个 sdist；
+distribution smoke 不再重复安装 sdist 或枚举 archive 内部文件。
 
 ## 合并并监控发布
 
