@@ -1,0 +1,209 @@
+# Runtime 内部身份验证
+
+本文描述 `mcp-runtime` 首个发布切片实现的配置、认证、请求身份和 Server 生命周期。
+规范来源是 Platform
+[Internal Credential Contract](https://github.com/XDenovo/platform/blob/main/docs/internal-credential-contract.md)；
+本文说明 Python Runtime 如何实现该契约，不另行定义 Gateway Token。
+
+## 信任边界
+
+Compute MCP Service 只接收 Gateway 签发的短时内部 JWT。外部 OAuth Access Token、
+用户控制的 JWKS 地址和私钥不会进入 Runtime。认证建立调用者身份，业务 Tool 仍负责
+scope、资源归属和其他领域授权。
+
+Runtime 固定：
+
+- JWT 算法为 RS256；
+- 必需 scope 为 `mcp:invoke`；
+- `aud` 为 `urn:xdenovo:mcp-service:{service_id}`；
+- HTTP transport 为 `/mcp` 上的 stateful Streamable HTTP；
+- 严格 Host/Origin 防护、masked Server error、禁用 FastMCP background tasks。
+
+这些值不是环境变量，也不能通过 `create_server()` 或 `run_server()` 的任意参数覆盖。
+
+## 设置模型
+
+顶层配置为 `RuntimeSettings`：
+
+| 环境变量 | 含义 | 默认值 |
+|---|---|---|
+| `MCP_RUNTIME_SERVICE_ID` | 稳定、lowercase DNS-label 服务 ID | 必填 |
+| `MCP_RUNTIME_SERVER__HOST` | 进程绑定地址 | `127.0.0.1` |
+| `MCP_RUNTIME_SERVER__PORT` | 进程端口，1–65535 | `8000` |
+| `MCP_RUNTIME_SERVER__ALLOWED_HOSTS` | 严格 Host allowlist；复杂值使用 JSON 数组 | loopback 时为绑定 host |
+| `MCP_RUNTIME_AUTH__ISSUER` | 必须精确匹配的稳定 HTTPS issuer | 必填 |
+| `MCP_RUNTIME_AUTH__JWKS_URL` | Runtime 获取公钥的绝对 HTTP/HTTPS URL | 必填 |
+
+`issuer` 与 `jwks_url` 是两个独立配置。它们拒绝相对 URL、userinfo 和 fragment；
+Runtime 不从 issuer 推断 JWKS，也不接受请求提供的 URL。
+
+构造参数优先于进程环境：
+
+```python
+from mcp_runtime import InternalAuthSettings, RuntimeSettings, ServerSettings
+
+settings = RuntimeSettings(
+    service_id="graphpep-mcp",
+    server=ServerSettings(),
+    auth=InternalAuthSettings(
+        issuer="https://api.xdenovoai.com/",
+        jwks_url="http://gateway.internal/.well-known/jwks.json",
+    ),
+)
+```
+
+默认配置不发现文件。调用方可以通过
+`RuntimeSettings(_env_file="/explicit/path/.env")` 明确启用一个 `.env`；Runtime 不加载
+YAML、JSON 或任意配置目录。
+
+非 loopback 绑定必须提供无通配符的 `allowed_hosts`。`run_server()` 不接受任意
+`**kwargs`，因此服务不能意外切换到 stateless HTTP、关闭 Host 防护或替换认证 Provider。
+它还会拒绝并非由 `create_server()` 组装的 Server，或与构造时服务身份/认证设置不一致
+的 `RuntimeSettings`。
+服务间 Gateway 请求不发送浏览器 Origin 即可；若请求携带 Origin，它仍须通过严格
+同源检查。
+
+## Credential 验证
+
+FastMCP `JWTVerifier` 负责 JWKS key 选择、RS256 验签以及 issuer、audience、expiry
+检查，并生成已验证的 `AccessToken`。Runtime 不再次解码 payload 或重复验签，而是在
+已验证 Claims 上应用更严格的 wire policy：
+
+- `kid` 必须是非空字符串；
+- `iss`、`aud`、`sub`、`scope` 必须是非空字符串；
+- `iss` 和 `aud` 必须分别精确匹配配置值与派生值，不能使用 audience 数组；
+- `scope` 必须是单空格分隔、无重复值的字符串，并包含 `mcp:invoke`；
+- `iat`、`exp` 和可选 `nbf` 必须是整数 NumericDate；boolean、float、string 均拒绝；
+- `0 < exp - iat <= 300`；
+- `iat <= now + 30`，若有 `nbf` 则 `nbf <= now + 30` 且 `nbf < exp`；
+- `exp > now`，正好到期即无效。
+
+未知额外 Claim 可以存在，但不会进入服务 API。验证成功后，Runtime 只创建：
+
+```python
+Principal(subject: str, scopes: frozenset[str])
+```
+
+`Principal` 是 immutable。它不保留原始 JWT、FastMCP `AccessToken`、issuer、
+audience、时间字段或任意 Claim。
+
+## 请求上下文
+
+Tool 在当前已认证 MCP HTTP 请求中同步调用 `get_principal()`：
+
+```python
+@server.tool
+async def submit() -> str:
+    principal = get_principal()
+    return principal.subject
+```
+
+函数在请求外、未认证请求或缺少验证后 subject 时抛出清晰的 `RuntimeError`。它直接读取
+FastMCP 当前 HTTP request 上的认证用户，不创建第二个 Runtime `ContextVar`，也不会从
+FastMCP background-task snapshot 恢复身份。
+
+Workflow、Activity、队列消息和服务自建后台任务必须显式复制所需的稳定业务字段，例如
+`Principal.subject`；不要传播原始 Token 或假设请求上下文会继续存在。
+
+不同并发请求的 FastMCP request context 相互隔离。Stateful HTTP Session 还绑定创建它
+的认证身份；另一有效 Principal 使用捕获的 Session ID 时得到与不存在 Session 相同的
+404，避免泄露 Session 是否存在。
+
+## Server 与 JWKS 生命周期
+
+典型服务可以组合自己的 lifespan：
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastmcp import FastMCP
+from mcp_runtime import RuntimeSettings, create_server, run_server
+
+
+@asynccontextmanager
+async def service_lifespan(
+    server: FastMCP[Any],
+) -> AsyncIterator[dict[str, object]]:
+    resource = await open_service_resource()
+    try:
+        yield {"resource": resource}
+    finally:
+        await resource.aclose()
+
+
+settings = RuntimeSettings()
+server = create_server(settings, lifespan=service_lifespan)
+run_server(server, settings)
+```
+
+Runtime 在每次 Server lifespan 进入时创建一个共享 `httpx.AsyncClient`，设置有限
+timeout，并禁用 redirect。JWKS 不在构造或 startup 时预取，只在首次认证请求时加载。
+FastMCP 缓存一个 JWKS 集合；缓存中不存在新 `kid` 时重新获取，因此正常 overlap
+rotation 可在不重启服务的情况下同时接受新旧 key。该缓存行为不是紧急私钥撤销 SLA。
+
+Runtime 先建立 JWKS Client，再进入服务 lifespan；退出顺序相反。正常关闭、服务
+startup 失败和取消路径都会清理 Runtime 资源。同一 Server 的 lifespan 可在测试中
+重复进入；仅构造但从未运行不会创建 HTTP Client。
+
+`jwks_transport` 只是在单元/集成测试中注入 `httpx.AsyncBaseTransport` 的窄 seam。
+Runtime 始终拥有 Client、timeout、redirect 和关闭策略，生产服务不应传入它。
+
+## 失败和日志语义
+
+任何 Bearer、header、签名、Claim 或 JWKS 问题都在 Tool 执行前 fail closed。FastMCP
+的公共 verifier contract 会把一些 JWKS 故障与无效 Token 都表现为
+`401 invalid_token`；调用者不应据此推断内部网络状态。
+
+Runtime 控制的 JWKS HTTP 边界会发送 `jwks_fetch_failed` 结构化事件。认证拒绝发送
+`internal_auth_failed`，包含服务 ID、验证阶段、低基数 reason、retryability 和经过
+限制/脱敏的 `kid`。事件不会包含：
+
+- 原始 Token 或 Authorization Header；
+- `sub` 或拒绝的 Claim 值；
+- 内部 JWKS URL；
+- 未清理的异常文本。
+
+Runtime 不全局配置 structlog、stdlib logging 或 tracing，也不默认记录成功
+Principal。FastMCP verifier 实例中可能插入 Claim 值的日志被抑制，签名验证本身仍由
+FastMCP 完成。
+
+## 测试策略
+
+Unit suite 覆盖配置、严格 Claims、时间边界、Principal、JWKS cache/rotation、失败分类、
+日志安全和资源生命周期：
+
+```bash
+uv run --no-sync pytest tests/unit
+```
+
+Integration suite 生成真实临时 RSA key 和 JWT，通过 `httpx.MockTransport` 提供真实
+JWKS wire response，并以 FastMCP Streamable HTTP Client 经 `httpx.ASGITransport`
+穿过真实 Bearer middleware。它不使用会绕过 HTTP 认证的 in-memory Server transport：
+
+```bash
+uv run --no-sync pytest tests/integration
+```
+
+完整 CI 命令同时采集 `mcp_runtime` statement/branch coverage，输出 terminal/XML，并要求
+至少 90%：
+
+```bash
+uv run --no-sync pytest \
+  --cov=mcp_runtime \
+  --cov-config=pyproject.toml \
+  --cov-branch \
+  --cov-report=term-missing \
+  --cov-report=xml \
+  --cov-fail-under=90
+```
+
+普通或聚焦 pytest 不被全局 coverage 参数包裹。
+
+## 明确不包含
+
+本切片不实现 Gateway signer/JWKS Route、外部 OAuth Token 接受、业务授权装饰器、
+数据库、Job/JobStep/Artifact、S3、Temporal Workflow/Activity/Worker、健康探针、
+Event Store、多副本 Session 协调或 key 运维 runbook。测试 helper 保持在私有
+`tests/support`，不发布 `mcp_runtime.testing`。
